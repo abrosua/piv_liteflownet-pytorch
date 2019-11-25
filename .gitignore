@@ -5,7 +5,7 @@
 images/*
 models/*
 net_preview/
-outputs/*
+# outputs/*
 work/
 
 # Expressions
