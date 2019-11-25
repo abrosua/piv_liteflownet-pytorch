@@ -6,7 +6,6 @@ images/*
 models/*
 net_preview/
 outputs/*
-outputs/PIV-LiteFlowNet-en/*
 work/
 
 # Expressions
@@ -19,7 +18,7 @@ work/
 # !!! Exception !!!
 !images/demo/
 !models/pretrain_torch/
-!outputs/PIV-LiteFlowNet-en/demo/
+!outputs/demo/
 
 # ----------------------------------------
 
