@@ -25,7 +25,6 @@ parser = argparse.ArgumentParser(description='Training script for LiteFlowNet')
 parser.add_argument('--start_epoch', type=int, default=1)
 parser.add_argument('--total_epochs', type=int, default=10000, help="Maximum epoch value")
 parser.add_argument('--batch_size', '-b', type=int, default=8, help="Batch size")
-parser.add_argument('--val_batch_size', '-vb', type=int, default=1, help="Validation batch size")
 
 parser.add_argument('--crop_size', type=int, nargs='+', default=[256, 256],
                     help="Spatial dimension to crop training samples for training")
@@ -47,14 +46,17 @@ parser.add_argument('--inference_size', type=int, nargs='+', default = [-1,-1],
 
 parser.add_argument('--pretrained', default='', type=str, metavar='PATH', help='path to the pre-trained model (default: none)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH', help='path to latest checkpoint (default: none)')
-parser.add_argument('--log_frequency', '--summ_iter', type=int, default=1, help="Log every n batches")
 
 # For instance
-utils.add_arguments_for_function(parser, models, argument_for_func='model', default='piv_liteflownet',
-                                 skip_params=['params'])
+utils.add_arguments_for_module(parser, models, argument_for_class='model', default='LiteFlowNet',
+                               parameter_defaults={'starting_scale': 10.0,
+                                                   'lowest_level': 1})
 
-utils.add_arguments_for_function(parser, loss, argument_for_func='loss', default='piv_loss',
-                                 parameter_defaults={'norm': 'L2'})
+utils.add_arguments_for_module(parser, loss, argument_for_class='loss', default='MultiScale',
+                               parameter_defaults={'div_scale': 0.2,
+                                                   'startScale': 1,
+                                                   'l_weight': (0.001, 0.001, 0.001, 0.001, 0.001, 0.01),
+                                                   'norm': 'L2'})
 
 utils.add_arguments_for_module(parser, torch.optim, argument_for_class='optimizer', default='Adam',
                                skip_params=['params'])
@@ -77,7 +79,8 @@ utils.add_arguments_for_module(parser, comet, argument_for_class='logger', defau
                                exception=['log', 'display'],
                                parameter_defaults={'api_key': '1zB8P6u9ztqAuzy88PWhpbaIU',
                                                    'project_name': 'piv-flownet',
-                                                   'workspace': 'flow-diagnostics-itb'})
+                                                   'workspace': 'flow-diagnostics-itb',
+                                                   'parse_args': False})
 
 main_dir = os.path.dirname(os.path.realpath(__file__))
 os.chdir(main_dir)
@@ -211,13 +214,15 @@ if __name__ == '__main__':
                 '--seed', '69',
                 '--name', 'train_trial',
                 '--training_dataset_root', '../piv_datasets/cai2018/ztest_json',
-                '--validation_dataset_root', '../piv_datasets/cai2018/ztest_json',#]
-                '--logger_disabled', 'False']
+                '--validation_dataset_root', '../piv_datasets/cai2018/ztest_json',
+                ] #'--logger_disabled', 'True']
 
     # ------------------------------ PARSING THE INPUT ------------------------------
     # Parse the official arguments
     with utils.TimerBlock("Parsing Arguments") as block:
+        log_args = {}
         args = parser.parse_args()
+
         if args.number_gpus < 0:
             args.number_gpus = torch.cuda.device_count()
 
@@ -225,16 +230,19 @@ if __name__ == '__main__':
         parser.add_argument('--IGNORE', action='store_true')
         defaults = vars(parser.parse_args(['--IGNORE']))
 
-        # Print all arguments, color the non-defaults
+        # Print all arguments, color the non-defaults. Also prepare for the parameters logger
         for argument, value in sorted(vars(args).items()):
             reset = colorama.Style.RESET_ALL
             color = reset if value == defaults[argument] else colorama.Fore.MAGENTA
             block.log('{}{}: {}{}'.format(color, argument, value, reset))
 
+            if not bool(re.search('logger', argument)):
+                log_args[argument] = value
+
         # --------------- Class Instantiation ---------------
         # Model and Loss
-        args.model_func = utils.all_to_dict(models)[args.model]
-        args.loss_func = utils.all_to_dict(loss)[args.loss]
+        args.model_class = utils.module_to_dict(models)[args.model]
+        args.loss_class = utils.module_to_dict(loss)[args.loss]
 
         # Optimizer and Learning Rate Scheduler
         args.optimizer_class = utils.module_to_dict(torch.optim)[args.optimizer]
@@ -250,6 +258,11 @@ if __name__ == '__main__':
         args.logger_class = utils.module_to_dict(comet)[args.logger]
 
         # Misc
+        args.save = os.path.join(args.save, args.name)  # Save directory
+        block.log("Initializing save directory: {}".format(args.save))
+        if not os.path.exists(args.save):
+            os.makedirs(args.save)
+
         args.cuda = not args.no_cuda and torch.cuda.is_available()
         args.log_file = os.path.join(args.save, 'args.txt')
 
@@ -296,16 +309,18 @@ if __name__ == '__main__':
         class ModelAndLoss(nn.Module):
             def __init__(self, args):
                 super(ModelAndLoss, self).__init__()
-                if args.pretrained and os.path.isfile(args.pretrained):
-                    param = torch.load(args.pretrained)
-                else:
-                    param = None
 
                 kwargs = utils.kwargs_from_args(args, 'model')
-                self.model = args.model_func(param, **kwargs)
+                self.model = args.model_class(**kwargs)
+
+                if args.pretrained:
+                    if os.path.isfile(args.pretrained):
+                        self.model.load_state_dict(torch.load(args.pretrained))
+                    else:
+                        raise ValueError(f"The PRETRAINED file is not found! Fix the file path ({args.pretrained})!")
 
                 kwargs = utils.kwargs_from_args(args, 'loss')
-                self.loss = args.loss_func(**kwargs)
+                self.loss = args.loss_class(**kwargs)
 
             def forward(self, data, target, inference=False):
                 output = self.model(data[0], data[1])
@@ -336,22 +351,19 @@ if __name__ == '__main__':
             torch.manual_seed(args.seed)
 
         # Load weights if needed, otherwise randomly initialize
-        if args.resume and os.path.isfile(args.resume):  # Resume from checkpoint
-            block.log("Loading checkpoint '{}'".format(args.resume))
-            checkpoint = torch.load(args.resume)
-            args.start_epoch = checkpoint['epoch']
+        if args.resume:  # Resume from checkpoint
+            if os.path.isfile(args.resume):
+                block.log("Loading checkpoint '{}'".format(args.resume))
+                checkpoint = torch.load(args.resume)
+                args.start_epoch = checkpoint['epoch']
 
-            best_err = checkpoint['best_EPE']
-            model_and_loss.module.model.load_state_dict(checkpoint['model_state_dict'])
-            block.log("Loaded checkpoint '{}' (at epoch {})".format(args.resume, checkpoint['epoch']))
+                best_err = checkpoint['best_EPE']
+                model_and_loss.module.model.load_state_dict(checkpoint['model_state_dict'])
+                block.log("Loaded checkpoint '{}' (at epoch {})".format(args.resume, checkpoint['epoch']))
+            else:
+                raise ValueError(f"The RESUME file is not found! Fix the file path ({args.resume})!")
         else:
             block.log("Random initialization")
-
-        # Save directory
-        args.save = os.path.join(args.save, args.name)
-        block.log("Initializing save directory: {}".format(args.save))
-        if not os.path.exists(args.save):
-            os.makedirs(args.save)
 
     ## Dynamically load the optimizer with parameters passed in via "--optimizer_[param]=[value]" arguments
     with utils.TimerBlock("Initializing {} Optimizer".format(args.optimizer)) as block:
@@ -387,8 +399,8 @@ if __name__ == '__main__':
         logger = args.logger_class(**kwargs)
 
         # Init.
-        logger.log_parameters(args)
         logger.set_name(args.name)
+        logger.log_parameters(log_args)
 
         for param, default in list(kwargs.items()):
             block.log("{} = {} ({})".format(param, default, type(default)))
