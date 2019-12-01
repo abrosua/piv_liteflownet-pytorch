@@ -303,12 +303,57 @@ def _unknown_flow(u: np.ndarray, v: np.ndarray):
 def flowname_modifier(indir: str, outdir: str, ext: str = '_out.flo', pair: bool = True) -> str:
     out_name = os.path.splitext(os.path.basename(indir))[0]
     if pair:
-        out_name = out_name.rsplit('_', 1)[0] + ext
+        out_name = str(out_name.rsplit('_', 1)[0]) + ext
     else:
         out_name += ext
 
     out_name = os.path.join(outdir, out_name)
     return out_name
+
+
+def resize_flow(flow, des_width, des_height, method='bilinear'):
+    """Utility function to resize the flow array, used by RandomScale transformer.
+    WARNING: improper for sparse flow!
+    Args:
+        flow: the flow array
+        des_width: Target width
+        des_height: Target height
+        method: interpolation method to resize the flow
+    Returns:
+        the resized flow
+    """
+    src_height = flow.shape[0]
+    src_width = flow.shape[1]
+
+    if src_width == des_width and src_height == des_height:  # Sanity check, if resizing is a necessary
+        return flow
+
+    ratio_height = float(des_height) / float(src_height)
+    ratio_width = float(des_width) / float(src_width)
+
+    if method == 'bilinear':
+        flow = cv2.resize(flow, (des_width, des_height), interpolation=cv2.INTER_LINEAR)
+    elif method == 'nearest':
+        flow = cv2.resize(flow, (des_width, des_height), interpolation=cv2.INTER_NEAREST)
+    else:
+        raise Exception('Invalid resize flow method!')
+
+    flow[:, :, 0] = flow[:, :, 0] * ratio_width
+    flow[:, :, 1] = flow[:, :, 1] * ratio_height
+
+    return flow
+
+
+def horizontal_flip_flow(flow):
+    flow = np.copy(np.fliplr(flow))
+    flow[:, :, 0] *= -1
+    return flow
+
+
+def vertical_flip_flow(flow):
+    flow = np.copy(np.flipud(flow))
+    flow[:, :, 1] *= -1
+    return flow
 
 
 # ---------------------- TESTING ----------------------
