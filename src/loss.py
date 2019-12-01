@@ -9,26 +9,49 @@ __all__ = [
     'hui_loss', 'piv_loss'
 ]
 
-def EPE(input_flow, target_flow):
-	epe_loss = torch.norm(target_flow - input_flow, p=2, dim=1).mean()
+def EPE(input_flow, target_flow, mean=True):
+	epe_map = torch.norm(target_flow - input_flow, p=2, dim=1)
+	batch_size = epe_map.size(0)
+
+	if mean:
+		epe_loss = epe_map.mean()
+	else:
+		epe_loss = epe_map.sum() / batch_size
+
 	return epe_loss
 
 
 class L1(nn.Module):
-	def __init__(self):
+	def __init__(self, mean=True):
 		super(L1, self).__init__()
+		self.mean = mean
 
 	def forward(self, output, target):
-		lossvalue = torch.abs(output - target).mean()
+		loss_map = torch.abs(output - target)
+		batch_size = loss_map.size(0)
+
+		if self.mean:
+			lossvalue = loss_map.mean()
+		else:
+			lossvalue = loss_map.sum() / batch_size
+
 		return lossvalue
 
 
 class L2(nn.Module):
-	def __init__(self):
+	def __init__(self, mean=True):
 		super(L2, self).__init__()
+		self.mean = mean
 
 	def forward(self, output, target):
-		lossvalue = torch.norm(output - target, p=2, dim=1).mean()
+		loss_map = torch.norm(output - target, p=2, dim=1)
+		batch_size = loss_map.size(0)
+
+		if self.mean:
+			lossvalue = loss_map.mean()
+		else:
+			lossvalue = loss_map.sum() / batch_size
+
 		return lossvalue
 
 
@@ -61,6 +84,10 @@ class L2Loss(nn.Module):
 
 
 class MultiScale(nn.Module):
+	"""
+	Multi stage loss calculation to calculate total loss.
+	Pyramid level is sorted BACKWARD (e.g., 6, 5, 4, 3, 2, 1)
+	"""
 	def __init__(self, div_scale=0.05, startScale=2, l_weight=None, norm='L1'):
 		super(MultiScale, self).__init__()
 
@@ -106,6 +133,10 @@ class MultiScale(nn.Module):
 
 
 class LevelLoss(nn.Module):
+	"""
+	Multi stage loss calculation to calculate loss at each stage.
+	Pyramid level is sorted BACKWARD (e.g., 6, 5, 4, 3, 2, 1)
+	"""
 	def __init__(self, div_scale=0.05, startScale=2, n_level=5, norm='L1'):
 		super(LevelLoss, self).__init__()
 
