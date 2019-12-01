@@ -43,7 +43,7 @@ def flo_files_from_folder(folder: str, uppercase: bool = True, extensions: Tuple
 def read_gen(file_name: str, im_extensions: Tuple[str] = ('.jpg', '.jpeg', '.png', '.bmp', '.tif', '.ppm')):
     ext = os.path.splitext(file_name)[-1]
     if ext in im_extensions:
-        im = np.array(PIL.Image.open(file_name).convert('RGB'))
+        im = PIL.Image.open(file_name).convert('RGB')
         return im
     elif ext in ('.bin', '.raw'):
         return np.load(file_name)

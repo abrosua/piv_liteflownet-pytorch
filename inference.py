@@ -152,8 +152,10 @@ class Inference:
 						file2 = fbase.rsplit('_', 1)[0] + '_img2' + fext
 
 						if os.path.isfile(file2):
-							out_flow = self.parser(self.net, PIL.Image.open(file1).convert('RGB'),
-												   PIL.Image.open(file2).convert('RGB'), device=self.device)
+							out_flow = self.parser(self.net,
+												   PIL.Image.open(file1).convert('RGB'),
+												   PIL.Image.open(file2).convert('RGB'),
+												   device=self.device)
 							# Post-processing here
 							out_name = flowname_modifier(file1, outdir, pair=pair)
 							if write:
@@ -163,8 +165,10 @@ class Inference:
 					prev_frame = None
 					for curr_frame in tqdm(im_files, ncols=100, leave=True, unit='pair', desc=f'Evaluating {imgdir}'):
 						if prev_frame is not None:
-							out_flow = self.parser(self.net, PIL.Image.open(prev_frame).convert('RGB'),
-												   PIL.Image.open(curr_frame).convert('RGB'), device=self.device)
+							out_flow = self.parser(self.net,
+												   PIL.Image.open(prev_frame).convert('RGB'),
+												   PIL.Image.open(curr_frame).convert('RGB'),
+												   device=self.device)
 							# Post-processing here
 							out_name = flowname_modifier(prev_frame, outdir, pair=pair)
 							if write:
