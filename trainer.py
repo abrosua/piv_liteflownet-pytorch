@@ -30,6 +30,9 @@ parser.add_argument('--crop_size', type=int, nargs='+', default=[256, 256],
                     help="Spatial dimension to crop training samples for training")
 parser.add_argument("--rgb_max", type=float, default=255.)
 
+parser.add_argument('--weight_decay', '-wd', type=float, default=4e-4, metavar='W', help='weight decay parameter')
+parser.add_argument('--bias-decay', '-bd', type=float, default=0, metavar='B', help='bias decay parameter')
+
 parser.add_argument('--number_workers', '-nw', '--num_workers', type=int, default=8)
 parser.add_argument('--number_gpus', '-ng', type=int, default=-1, help='number of GPUs to use')
 parser.add_argument('--no_cuda', action='store_true')
@@ -65,12 +68,12 @@ utils.add_arguments_for_module(parser, torch.optim.lr_scheduler, argument_for_cl
                                skip_params=['params'])
 
 utils.add_arguments_for_module(parser, datasets, argument_for_class='training_dataset', default='PIVData',
-                               skip_params=['is_cropped'],
+                               skip_params=['is_cropped', 'transform'],
                                parameter_defaults={'root': './data/piv_datasets',
                                                    'mode': 'train'})
 
 utils.add_arguments_for_module(parser, datasets, argument_for_class='validation_dataset', default='PIVData',
-                               skip_params=['is_cropped'],
+                               skip_params=['is_cropped', 'transform'],
                                parameter_defaults={'root': './data/piv_datasets',
                                                    'replicates': 1,
                                                    'mode': 'val'})
@@ -119,12 +122,12 @@ class Train:
         # Start batch iteration
         for batch_idx, (data, target) in enumerate(progress):
             if self.args.cuda and self.args.number_gpus > 0:
-                data, target = [d.cuda(async=True) for d in data], target.cuda(async=True)
+                data, target = [d.cuda(async=True) for d in data], [t.cuda(async=True) for t in target]
 
             with torch.set_grad_enabled(bool(re.search("train", loader_key))):
                 self.optimizer.zero_grad() if bool(re.search('val', loader_key)) else None
 
-                losses = self.model_and_loss(data, target)
+                losses = self.model_and_loss(data, target[0])
                 batch_loss = losses[0]  # Collect the first loss (MultiScale-{norm})!
 
                 if bool(re.search("train", loader_key)):
@@ -283,9 +286,13 @@ if __name__ == '__main__':
         inf_gpuargs = gpuargs.copy()
         inf_gpuargs['num_workers'] = args.number_workers
 
+        # Load the transformer
+        train_transformer, val_transformer = datasets.get_transform(args)
+
         data_loader = {}
         if os.path.exists(args.training_dataset_root):
-            train_dataset = args.training_dataset_class(args, True, **utils.kwargs_from_args(args, 'training_dataset'))
+            train_dataset = args.training_dataset_class(args, True, transform=train_transformer,
+                                                        **utils.kwargs_from_args(args, 'training_dataset'))
             block.log('Training Dataset: {}'.format(args.training_dataset))
             block.log('Training Input: {}'.format(' '.join([str([d for d in x.size()]) for x in train_dataset[0][0]])))
             block.log(
@@ -294,7 +301,7 @@ if __name__ == '__main__':
                                               **gpuargs)
 
         if os.path.exists(args.validation_dataset_root):
-            validation_dataset = args.validation_dataset_class(args, True,
+            validation_dataset = args.validation_dataset_class(args, True, transform=val_transformer,
                                                                **utils.kwargs_from_args(args, 'validation_dataset'))
             block.log('Validation Dataset: {}'.format(args.validation_dataset))
             block.log('Validation Input: {}'.format(' '.join([str([d for d in x.size()])
@@ -368,7 +375,13 @@ if __name__ == '__main__':
     ## Dynamically load the optimizer with parameters passed in via "--optimizer_[param]=[value]" arguments
     with utils.TimerBlock("Initializing {} Optimizer".format(args.optimizer)) as block:
         kwargs = utils.kwargs_from_args(args, 'optimizer')
-        optimizer = args.optimizer_class([p for p in model_and_loss.parameters() if p.requires_grad], **kwargs)
+        param_group = [
+            {'params': [p for n, p in model_and_loss.named_parameters() if p.requires_grad and n.endswith(".weight")],
+             'weight_decay': args.weight_decay},
+            {'params': [p for n, p in model_and_loss.named_parameters() if p.requires_grad and n.endswith(".bias")],
+             'weight_decay': args.bias_decay}
+        ]
+        optimizer = args.optimizer_class(param_group, **kwargs)
 
         if args.resume:  # Load checkpoint
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
