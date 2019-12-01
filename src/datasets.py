@@ -32,7 +32,7 @@ class PIVData(Dataset):
         self.image_list = []
 
         for dataset_file in dataset_list:
-            flonames = self._json_pickler(dataset_file)
+            flonames = json_pickler(dataset_file, self.set_type, self.replicates)
 
             for flo in flonames:
                 if 'test' in flo:
@@ -56,15 +56,19 @@ class PIVData(Dataset):
 
         self.size = len(self.image_list)
 
-        self.frame_size = read_gen(self.image_list[0][0]).size
+        if self.size > 0:
+            self.frame_size = read_gen(self.image_list[0][0]).size
 
-        if (self.render_size[0] < 0) or (self.render_size[1] < 0) or \
-                (self.frame_size[0] % 64) or (self.frame_size[1] % 64):
-            self.render_size[0] = ((self.frame_size[0])//64) * 64
-            self.render_size[1] = ((self.frame_size[1])//64) * 64
+            if (self.render_size[0] < 0) or (self.render_size[1] < 0) or \
+                    (self.frame_size[0] % 64) or (self.frame_size[1] % 64):
+                self.render_size[0] = ((self.frame_size[0])//64) * 64
+                self.render_size[1] = ((self.frame_size[1])//64) * 64
 
-        args.inference_size = self.render_size
+            args.inference_size = self.render_size
+        else:
+            self.frame_size = None
 
+        # Sanity check on the number of image pair and flow
         assert (len(self.image_list) == len(self.flow_list))
 
     def __len__(self) -> int:
@@ -96,28 +100,6 @@ class PIVData(Dataset):
 
         res_data = tuple(transformer(*data))
         return res_data
-
-    def _json_pickler(self, set_dir: str) -> List[str]:
-        modes = ['train', 'val', 'test']
-        if self.set_type not in modes:
-            raise ValueError(f'Unknown input of mode ({self.set_type})! Choose between {(" or ").join(modes)} only!')
-
-        subdir = os.path.basename(set_dir).rsplit('_', 1)[0]
-        directory = os.path.join(os.path.dirname(os.path.dirname(set_dir)), subdir)
-
-        datanames = []
-        with open(set_dir) as json_file:
-            data = json.load(json_file)[self.set_type]
-
-            for line in data:
-                bname = os.path.basename(line)
-                filename = os.path.join(directory, bname)
-
-                if os.path.isfile(filename):
-                    for i in range(self.replicates):
-                        datanames.append(filename)
-
-        return datanames
 
 
 class InferenceRun(Dataset):
@@ -151,15 +133,18 @@ class InferenceRun(Dataset):
 
             self.image_list += [[img1, img2]]
 
-        self.frame_size = read_gen(self.image_list[0][0]).size
-
-        if (self.render_size[0] < 0) or (self.render_size[1] < 0) or \
-                (self.frame_size[0] % 64) or (self.frame_size[1] % 64):
-            self.render_size[0] = ((self.frame_size[0]) // 64) * 64
-            self.render_size[1] = ((self.frame_size[1]) // 64) * 64
-
-        # Sanity check on the number of image pair and flow
         self.size = len(self.image_list)
+
+        if self.size > 0:
+            self.frame_size = read_gen(self.image_list[0][0]).size
+
+            if (self.render_size[0] < 0) or (self.render_size[1] < 0) or \
+                    (self.frame_size[0] % 64) or (self.frame_size[1] % 64):
+                self.render_size[0] = ((self.frame_size[0]) // 64) * 64
+                self.render_size[1] = ((self.frame_size[1]) // 64) * 64
+
+        else:
+            self.frame_size = None
 
     def __len__(self) -> int:
         return self.size
@@ -185,40 +170,55 @@ class InferenceRun(Dataset):
 
 
 class InferenceEval(Dataset):
-    def __init__(self, inference_size: Tuple = (-1, -1), root: str = '') -> None:
+    def __init__(self, inference_size: Tuple = (-1, -1), root: str = '', set_type: Optional[str] = None) -> None:
         self.render_size = list(inference_size)
+        exts = ['.jpg', '.jpeg', '.png', '.bmp', '.tif', '.ppm']
 
         self.flow_list = []
         self.image_list = []
 
+        root_ext = os.path.splitext(root)[1]
+        if root_ext and set_type is not None:
+            if root_ext == '.json':
+                flo_list = json_pickler(root, set_type=set_type)
+            else:
+                raise ValueError(f'Only json format is currently supported! Change the input path ({root}).')
+        else:
+            flo_list = flo_files_from_folder(root)
 
-        file_list = flo_files_from_folder(root)
-        for file in file_list:
-            if 'test' in file:
+        for flo in flo_list:
+            if 'test' in flo:
                 # print file
                 continue
 
-            imbase, imext = os.path.splitext(os.path.basename(file))
-            fbase = imbase.rsplit('_', 1)[0]
+            fbase = os.path.splitext(flo)[0]
+            fbase = fbase.rsplit('_', 1)[0]
 
-            img1 = file
-            img2 = os.path.join(root, str(fbase) + '_img2' + imext)
-            flow = os.path.join(root, str(fbase) + '_flow' + '.flo')
+            img1, img2 = None, None
+            for ext in exts:
+                img1 = str(fbase) + '_img1' + ext
+                img2 = str(fbase) + '_img2' + ext
+                if os.path.isfile(img1):
+                    break
 
-            if not os.path.isfile(img1) or not os.path.isfile(img2) or not os.path.isfile(flow):
+            if not os.path.isfile(img1) or not os.path.isfile(img2) or not os.path.isfile(flo):
                 continue
 
             self.image_list += [[img1, img2]]
-            self.flow_list += [flow]
+            self.flow_list += [flo]
 
         self.size = len(self.image_list)
 
-        self.frame_size = read_gen(self.image_list[0][0]).size
+        if self.size > 0:
+            self.frame_size = read_gen(self.image_list[0][0]).size
 
-        if (self.render_size[0] < 0) or (self.render_size[1] < 0) or \
-                (self.frame_size[0] % 64) or (self.frame_size[1] % 64):
-            self.render_size[0] = ((self.frame_size[0]) // 64) * 64
-            self.render_size[1] = ((self.frame_size[1]) // 64) * 64
+            if (self.render_size[0] < 0) or (self.render_size[1] < 0) or \
+                    (self.frame_size[0] % 64) or (self.frame_size[1] % 64):
+                self.render_size[0] = ((self.frame_size[0]) // 64) * 64
+                self.render_size[1] = ((self.frame_size[1]) // 64) * 64
+
+        else:
+            self.frame_size = None
 
         # Sanity check on the number of image pair and flow
         assert (len(self.image_list) == len(self.flow_list))
@@ -233,19 +233,16 @@ class InferenceEval(Dataset):
         img1 = read_gen(self.image_list[index][0])
         img2 = read_gen(self.image_list[index][1])
         flow = read_gen(self.flow_list[index])
+        data = [[img1, img2], [flow]]
 
         # Cropper and totensor tranformer for the images and flow
-        transformer = transforms.Compose([
-            transforms.CenterCrop(self.render_size),
-            transforms.ToTensor()
+        transformer = f_transforms.Compose([
+            f_transforms.Crop(self.render_size, crop_type='center'),
+            f_transforms.ModToTensor()
         ])
 
-        # Transform into tensor
-        img1 = transformer(img1)
-        img2 = transformer(img2)
-        flow = transformer(flow)
-
-        return [img1, img2], [flow]
+        res_data = tuple(transformer(*data))
+        return res_data
 
 
 # -------------------- Transformer --------------------
@@ -288,6 +285,29 @@ def get_transform(args):
 
 
 # -------------------- Helper --------------------
+def json_pickler(set_dir: str, set_type: str, replicates: int = 1) -> List[str]:
+    modes = ['train', 'val', 'test']
+    if set_type not in modes:
+        raise ValueError(f'Unknown input of mode ({set_type})! Choose between {(" or ").join(modes)} only!')
+
+    subdir = os.path.basename(set_dir).rsplit('_', 1)[0]
+    directory = os.path.join(os.path.dirname(os.path.dirname(set_dir)), subdir)
+
+    datanames = []
+    with open(set_dir) as json_file:
+        data = json.load(json_file)[set_type]
+
+        for line in data:
+            bname = os.path.basename(line)
+            filename = os.path.join(directory, bname)
+
+            if os.path.isfile(filename):
+                for i in range(replicates):
+                    datanames.append(filename)
+
+    return datanames
+
+
 def df_pickler(set_dir: str, replicate: int = 1, mode='json') -> List[str]:
     subdir = os.path.basename(set_dir).rsplit('_', 1)[0]
     directory = os.path.join(os.path.dirname(set_dir), subdir)
