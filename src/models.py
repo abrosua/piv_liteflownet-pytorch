@@ -1,14 +1,11 @@
 import torch
 import numpy as np
-from typing import Optional
+from typing import Optional, Tuple, List
 from collections import OrderedDict
 
-from src.correlation import FunctionCorrelation # the custom cost volume layer
+from src.correlation import FunctionCorrelation  # the custom cost volume layer
 
-
-__all__ = [
-    'hui_liteflownet', 'piv_liteflownet'
-]
+__all__ = ['hui_liteflownet', 'piv_liteflownet']  # For inference purpose
 
 #################################      NOTE      #################################
 #	1. ConvTranspose2d is the equivalent of Deconvolution layer in Caffe
@@ -18,22 +15,32 @@ __all__ = [
 ##################################################################################
 Backward_tensorGrid = {}
 
+
 def Backward(tensorInput, tensorFlow):
 	if str(tensorFlow.size()) not in Backward_tensorGrid:
-		tensorHorizontal = torch.linspace(-1.0, 1.0, tensorFlow.size(3)).view(1, 1, 1, tensorFlow.size(3)).expand(tensorFlow.size(0), -1, tensorFlow.size(2), -1)
-		tensorVertical = torch.linspace(-1.0, 1.0, tensorFlow.size(2)).view(1, 1, tensorFlow.size(2), 1).expand(tensorFlow.size(0), -1, -1, tensorFlow.size(3))
+		tensorHorizontal = torch.linspace(-1.0, 1.0, tensorFlow.size(3)).view(1, 1, 1, tensorFlow.size(3)).expand(
+			tensorFlow.size(0), -1, tensorFlow.size(2), -1)
+		tensorVertical = torch.linspace(-1.0, 1.0, tensorFlow.size(2)).view(1, 1, tensorFlow.size(2), 1).expand(
+			tensorFlow.size(0), -1, -1, tensorFlow.size(3))
 
 		Backward_tensorGrid[str(tensorFlow.size())] = torch.cat([tensorHorizontal, tensorVertical], 1).cuda()
 
-	tensorFlow = torch.cat([ tensorFlow[:, 0:1, :, :] / ((tensorInput.size(3) - 1.0) / 2.0), tensorFlow[:, 1:2, :, :] / ((tensorInput.size(2) - 1.0) / 2.0) ], 1)
+	tensorFlow = torch.cat([tensorFlow[:, 0:1, :, :] / ((tensorInput.size(3) - 1.0) / 2.0),
+							tensorFlow[:, 1:2, :, :] / ((tensorInput.size(2) - 1.0) / 2.0)], 1)
 
-	return torch.nn.functional.grid_sample(input=tensorInput, grid=(Backward_tensorGrid[str(tensorFlow.size())] + tensorFlow).permute(0, 2, 3, 1), mode='bilinear', padding_mode='zeros')
+	return torch.nn.functional.grid_sample(input=tensorInput,
+										   grid=(Backward_tensorGrid[str(tensorFlow.size())] + tensorFlow).permute(0, 2,
+																												   3,
+																												   1),
+										   mode='bilinear', padding_mode='zeros')
 
 
 # ----------- NETWORK DEFINITION -----------
 class LiteFlowNet(torch.nn.Module):
-	def __init__(self, starting_scale=40.0, lowest_level=2):
+	def __init__(self, starting_scale: int = 40, lowest_level: int = 2,
+				 mean_aug: Optional[Tuple[List[float], List[float]]] = None) -> None:
 		super(LiteFlowNet, self).__init__()
+		self.mean_aug = [[0, 0, 0], [0, 0, 0]]
 
 		## INIT.
 		self.lowest_level = int(lowest_level)
@@ -98,7 +105,6 @@ class LiteFlowNet(torch.nn.Module):
 
 				return [level1_feat, level2_feat, level3_feat, level4_feat, level5_feat, level6_feat]
 
-
 		## NetC_ext: Feature matching extension for pyramid level 2 (and 1) only
 		class FeatureExt(torch.nn.Module):
 			def __init__(self):
@@ -157,14 +163,14 @@ class LiteFlowNet(torch.nn.Module):
 				if self.upCorr_M is None:
 					corr_M_out = torch.nn.functional.leaky_relu(
 						input=FunctionCorrelation(tensorFirst=feat1,
-															  tensorSecond=feat2,
-															  intStride=1),
+												  tensorSecond=feat2,
+												  intStride=1),
 						negative_slope=0.1, inplace=False)
 				else:  # Upsampling the correlation result (for lower resolution level)
 					corr_M_out = self.upCorr_M(torch.nn.functional.leaky_relu(
 						input=FunctionCorrelation(tensorFirst=feat1,
-															  tensorSecond=feat2,
-															  intStride=2),
+												  tensorSecond=feat2,
+												  intStride=2),
 						negative_slope=0.1, inplace=False))
 
 				flow_M = self.conv_M(corr_M_out) + (xflow if xflow is not None else 0.0)
@@ -260,7 +266,8 @@ class LiteFlowNet(torch.nn.Module):
 				rgb_warp_R = Backward(tensorInput=img2, tensorFlow=xflow_S * self.dblBackward)  # ensure the same shape!
 				norm_R = (img1 - rgb_warp_R).pow(2.0).sum(1, True).sqrt().detach()  # L2 norm operation
 
-				conv_dist_R_out = self.conv_dist_R(self.conv_R(torch.cat([norm_R, rm_flow_R, self.moduleFeat(feat1)], 1)))
+				conv_dist_R_out = self.conv_dist_R(
+					self.conv_R(torch.cat([norm_R, rm_flow_R, self.moduleFeat(feat1)], 1)))
 				negsq_R = conv_dist_R_out.pow(2.0).neg()  # Negative-square
 
 				# Softmax
@@ -268,8 +275,19 @@ class LiteFlowNet(torch.nn.Module):
 				tensorDivisor = tensorDist.sum(1, True).reciprocal()  # output_{i,j,k} = 1 / input_{i,j,k}
 
 				# Element-wise dot product (.)
-				xflow_scale = self.moduleScaleX(tensorDist * torch.nn.functional.unfold(input=xflow_S[:, 0:1, :, :], kernel_size=self.intUnfold, stride=1, padding=int((self.intUnfold - 1) / 2)).view_as(tensorDist)) * tensorDivisor
-				yflow_scale = self.moduleScaleY(tensorDist * torch.nn.functional.unfold(input=xflow_S[:, 1:2, :, :], kernel_size=self.intUnfold, stride=1, padding=int((self.intUnfold - 1) / 2)).view_as(tensorDist)) * tensorDivisor
+				xflow_scale = self.moduleScaleX(
+					tensorDist *
+					torch.nn.functional.unfold(
+						input=xflow_S[:, 0:1, :, :], kernel_size=self.intUnfold, stride=1,
+						padding=int((self.intUnfold - 1) / 2)).view_as(tensorDist)
+				) * tensorDivisor
+
+				yflow_scale = self.moduleScaleY(
+					tensorDist *
+					torch.nn.functional.unfold(
+						input=xflow_S[:, 1:2, :, :], kernel_size=self.intUnfold, stride=1,
+						padding=int((self.intUnfold - 1) / 2)).view_as(tensorDist)
+				) * tensorDivisor
 
 				flow_R = torch.cat([xflow_scale, yflow_scale], 1)
 				return flow_R
@@ -288,16 +306,12 @@ class LiteFlowNet(torch.nn.Module):
 		self.NetE_R = torch.nn.ModuleList([
 			Regularization(pyr_level, self.SCALEFACTOR[pyr_level]) for pyr_level in self.level2use])  # NetE - R
 
-	def forward(self, img1, img2):
-		# Reaugmentation, due to the data augmentation during the training procedure
-		img1[:, 0, :, :] = img1[:, 0, :, :] - 0.411618
-		img1[:, 1, :, :] = img1[:, 1, :, :] - 0.434631
-		img1[:, 2, :, :] = img1[:, 2, :, :] - 0.454253
-
-		img2[:, 0, :, :] = img2[:, 0, :, :] - 0.410782
-		img2[:, 1, :, :] = img2[:, 1, :, :] - 0.433645
-		img2[:, 2, :, :] = img2[:, 2, :, :] - 0.452793
-
+	def forward(self, img1: torch.Tensor, img2: torch.Tensor):
+		"""
+		Mean normalization augmentation is excluded from the model definition!
+		The norm are added either during the Datasets definition (for DataLoader parsing)
+			or during the inference parsing pipeline.
+		"""
 		feat1 = self.NetC(img1)
 		feat2 = self.NetC(img2)
 
@@ -327,8 +341,8 @@ class LiteFlowNet(torch.nn.Module):
 			pyr_level = i_level + idx_diff
 
 			if pyr_level < 2:
-				f1_in = self.NetC_ext[pyr_level-1](feat1[pyr_level])
-				f2_in = self.NetC_ext[pyr_level-1](feat2[pyr_level])
+				f1_in = self.NetC_ext[pyr_level - 1](feat1[pyr_level])
+				f2_in = self.NetC_ext[pyr_level - 1](feat2[pyr_level])
 			else:
 				f1_in, f2_in = feat1[pyr_level], feat2[pyr_level]
 
@@ -347,7 +361,7 @@ class LiteFlowNet(torch.nn.Module):
 
 
 class LiteFlowNet2(torch.nn.Module):
-	def __init__(self, starting_scale=40.0, lowest_level=3):
+	def __init__(self, starting_scale: int = 40, lowest_level: int = 3) -> None:
 		super(LiteFlowNet2, self).__init__()
 
 		## INIT.
@@ -413,7 +427,6 @@ class LiteFlowNet2(torch.nn.Module):
 
 				return [level1_feat, level2_feat, level3_feat, level4_feat, level5_feat, level6_feat]
 
-
 		## NetC_ext: Feature matching extension for pyramid level 2 (and 1) only
 		class FeatureExt(torch.nn.Module):
 			def __init__(self):
@@ -476,14 +489,14 @@ class LiteFlowNet2(torch.nn.Module):
 				if self.upCorr_M is None:
 					corr_M_out = torch.nn.functional.leaky_relu(
 						input=FunctionCorrelation(tensorFirst=feat1,
-															  tensorSecond=feat2,
-															  intStride=1),
+												  tensorSecond=feat2,
+												  intStride=1),
 						negative_slope=0.1, inplace=False)
 				else:  # Upsampling the correlation result (for lower resolution level)
 					corr_M_out = self.upCorr_M(torch.nn.functional.leaky_relu(
 						input=FunctionCorrelation(tensorFirst=feat1,
-															  tensorSecond=feat2,
-															  intStride=2),
+												  tensorSecond=feat2,
+												  intStride=2),
 						negative_slope=0.1, inplace=False))
 
 				flow_M = self.conv_M(corr_M_out) + (xflow if xflow is not None else 0.0)
@@ -583,7 +596,8 @@ class LiteFlowNet2(torch.nn.Module):
 				rgb_warp_R = Backward(tensorInput=img2, tensorFlow=xflow_S * self.dblBackward)  # ensure the same shape!
 				norm_R = (img1 - rgb_warp_R).pow(2.0).sum(1, True).sqrt().detach()  # L2 norm operation
 
-				conv_dist_R_out = self.conv_dist_R(self.conv_R(torch.cat([norm_R, rm_flow_R, self.moduleFeat(feat1)], 1)))
+				conv_dist_R_out = self.conv_dist_R(
+					self.conv_R(torch.cat([norm_R, rm_flow_R, self.moduleFeat(feat1)], 1)))
 				negsq_R = conv_dist_R_out.pow(2.0).neg()  # Negative-square
 
 				# Softmax
@@ -591,8 +605,19 @@ class LiteFlowNet2(torch.nn.Module):
 				tensorDivisor = tensorDist.sum(1, True).reciprocal()  # output_{i,j,k} = 1 / input_{i,j,k}
 
 				# Element-wise dot product (.)
-				xflow_scale = self.moduleScaleX(tensorDist * torch.nn.functional.unfold(input=xflow_S[:, 0:1, :, :], kernel_size=self.intUnfold, stride=1, padding=int((self.intUnfold - 1) / 2)).view_as(tensorDist)) * tensorDivisor
-				yflow_scale = self.moduleScaleY(tensorDist * torch.nn.functional.unfold(input=xflow_S[:, 1:2, :, :], kernel_size=self.intUnfold, stride=1, padding=int((self.intUnfold - 1) / 2)).view_as(tensorDist)) * tensorDivisor
+				xflow_scale = self.moduleScaleX(
+					tensorDist *
+					torch.nn.functional.unfold(
+						input=xflow_S[:, 0:1, :, :], kernel_size=self.intUnfold, stride=1,
+						padding=int((self.intUnfold - 1) / 2)).view_as(tensorDist)
+				) * tensorDivisor
+
+				yflow_scale = self.moduleScaleY(
+					tensorDist *
+					torch.nn.functional.unfold(
+						input=xflow_S[:, 1:2, :, :], kernel_size=self.intUnfold, stride=1,
+						padding=int((self.intUnfold - 1) / 2)).view_as(tensorDist)
+				) * tensorDivisor
 
 				flow_R = torch.cat([xflow_scale, yflow_scale], 1)
 				return flow_R
@@ -611,16 +636,12 @@ class LiteFlowNet2(torch.nn.Module):
 		self.NetE_R = torch.nn.ModuleList([
 			Regularization(pyr_level, self.SCALEFACTOR[pyr_level]) for pyr_level in self.level2use])  # NetE - R
 
-	def forward(self, img1, img2):
-		# Reaugmentation, due to the data augmentation during the training procedure
-		img1[:, 0, :, :] = img1[:, 0, :, :] - 0.411618
-		img1[:, 1, :, :] = img1[:, 1, :, :] - 0.434631
-		img1[:, 2, :, :] = img1[:, 2, :, :] - 0.454253
-
-		img2[:, 0, :, :] = img2[:, 0, :, :] - 0.410782
-		img2[:, 1, :, :] = img2[:, 1, :, :] - 0.433645
-		img2[:, 2, :, :] = img2[:, 2, :, :] - 0.452793
-
+	def forward(self, img1: torch.Tensor, img2: torch.Tensor):
+		"""
+		Mean normalization augmentation is excluded from the model definition!
+		The norm are added either during the Datasets definition (for DataLoader parsing)
+			or during the inference parsing pipeline.
+		"""
 		feat1 = self.NetC(img1)
 		feat2 = self.NetC(img2)
 
@@ -650,8 +671,8 @@ class LiteFlowNet2(torch.nn.Module):
 			pyr_level = i_level + idx_diff
 
 			if pyr_level < 2:
-				f1_in = self.NetC_ext[pyr_level-1](feat1[pyr_level])
-				f2_in = self.NetC_ext[pyr_level-1](feat2[pyr_level])
+				f1_in = self.NetC_ext[pyr_level - 1](feat1[pyr_level])
+				f2_in = self.NetC_ext[pyr_level - 1](feat2[pyr_level])
 			else:
 				f1_in, f2_in = feat1[pyr_level], feat2[pyr_level]
 
@@ -702,9 +723,9 @@ def piv_liteflownet(params: Optional[OrderedDict] = None, version: int = 1):
 		version	: to determine whether to use LiteFlowNet or LiteFlowNet2 as the model
 	"""
 	if version == 1:  # using LiteFlowNet
-		model = LiteFlowNet(starting_scale=10.0, lowest_level=1)
+		model = LiteFlowNet(starting_scale=10, lowest_level=1)
 	elif version == 2:  # using LiteFlowNet2
-		model = LiteFlowNet2(starting_scale=10.0, lowest_level=2)
+		model = LiteFlowNet2(starting_scale=10, lowest_level=2)
 	else:
 		raise ValueError(f'Wrong input of model version (input = {version})! Choose between version 1 or 2 only!')
 

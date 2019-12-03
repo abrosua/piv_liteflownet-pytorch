@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from src.models import piv_liteflownet, hui_liteflownet
 from src.utils_data import image_files_from_folder
-from src.utils_plot import quiver_plot, write_flow, flowname_modifier, read_flow
+from src.utils_plot import quiver_plot, write_flow, flowname_modifier
 from src.datasets import InferenceRun
 
 # INPUT
@@ -25,18 +25,17 @@ args_img1 = './images/first.png'
 args_img2 = './images/second.png'
 args_output = './out.flo'
 
-for opt, arg in getopt.getopt(sys.argv[1:], '', [params[2:] + '=' for params in sys.argv[1::2]])[0]:
-	if opt == '--model' and arg != '': args_model = arg # which model to use
-	if opt == '--first' and arg != '': args_img1 = arg # path to the first frame
-	if opt == '--second' and arg != '': args_img2 = arg # path to the second frame
-	if opt == '--out' and arg != '': args_output = arg # path to where the output should be stored
-
 ##########################################################
 
-def estimate(net: torch.nn.Module, img1: torch.Tensor, img2: torch.Tensor, tensor: bool=False):
+# Mean augmentation global variable
+MEAN = ((0.173935, 0.180594, 0.192608), (0.172978, 0.179518, 0.191300))  # PIV-LiteFlowNet-en (Cai, 2019)
+# MEAN = ((0.411618, 0.434631, 0.454253), (0.410782, 0.433645, 0.452793))  # LiteFlowNet (Hui, 2018)
+
+
+def estimate(net: torch.nn.Module, img1: torch.Tensor, img2: torch.Tensor, tensor: bool = False):
 	# Ensure that both the first and second images have the same dimension!
-	assert(img1.size(2) == img2.size(2))
-	assert(img1.size(3) == img2.size(3))
+	assert (img1.size(2) == img2.size(2))
+	assert (img1.size(3) == img2.size(3))
 
 	input_width = img1.size(3)
 	input_height = img1.size(2)
@@ -50,9 +49,9 @@ def estimate(net: torch.nn.Module, img1: torch.Tensor, img2: torch.Tensor, tenso
 	scale_height = float(input_height) / float(adaptive_height)
 
 	tensor_im1 = torch.nn.functional.interpolate(input=img1, size=(adaptive_height, adaptive_width),
-												 mode='bilinear', align_corners=False)
+													mode='bilinear', align_corners=False)
 	tensor_im2 = torch.nn.functional.interpolate(input=img2, size=(adaptive_height, adaptive_width),
-												 mode='bilinear', align_corners=False)
+													mode='bilinear', align_corners=False)
 
 	# make sure to not compute gradients for computational performance
 	with torch.set_grad_enabled(False):
@@ -61,7 +60,7 @@ def estimate(net: torch.nn.Module, img1: torch.Tensor, img2: torch.Tensor, tenso
 
 	# Interpolate the flow result back to the desired input size
 	tensor_flow = torch.nn.functional.interpolate(input=tensor_raw_output, size=(input_height, input_width),
-												  mode='bilinear', align_corners=False)
+													mode='bilinear', align_corners=False)
 
 	tensor_flow[:, 0, :, :] *= scale_width
 	tensor_flow[:, 1, :, :] *= scale_height
@@ -153,9 +152,9 @@ class Inference:
 
 						if os.path.isfile(file2):
 							out_flow = self.parser(self.net,
-												   PIL.Image.open(file1).convert('RGB'),
-												   PIL.Image.open(file2).convert('RGB'),
-												   device=self.device)
+													PIL.Image.open(file1).convert('RGB'),
+													PIL.Image.open(file2).convert('RGB'),
+													device=self.device)
 							# Post-processing here
 							out_name = flowname_modifier(file1, outdir, pair=pair)
 							if write:
@@ -166,9 +165,9 @@ class Inference:
 					for curr_frame in tqdm(im_files, ncols=100, leave=True, unit='pair', desc=f'Evaluating {imgdir}'):
 						if prev_frame is not None:
 							out_flow = self.parser(self.net,
-												   PIL.Image.open(prev_frame).convert('RGB'),
-												   PIL.Image.open(curr_frame).convert('RGB'),
-												   device=self.device)
+													PIL.Image.open(prev_frame).convert('RGB'),
+													PIL.Image.open(curr_frame).convert('RGB'),
+													device=self.device)
 							# Post-processing here
 							out_name = flowname_modifier(prev_frame, outdir, pair=pair)
 							if write:
@@ -208,8 +207,17 @@ class Inference:
 	@staticmethod
 	def parser(net, im1, im2, device='cpu'):
 		assert im1.size == im2.size
-		tensor_im1 = transforms.ToTensor()(im1).to(device)
-		tensor_im2 = transforms.ToTensor()(im2).to(device)
+
+		# Tensor transformer
+		transformer = [
+			transforms.Compose([
+				transforms.ToTensor(),
+				transforms.Normalize(MEAN[i], (1.0, 1.0, 1.0))
+			])
+			for i in range(2)]
+
+		tensor_im1 = transformer[0](im1).to(device)
+		tensor_im2 = transformer[1](im2).to(device)
 
 		C, H, W = tensor_im1.size()
 		tensor_im1 = tensor_im1.view(1, C, H, W)
