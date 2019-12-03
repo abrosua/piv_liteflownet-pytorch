@@ -13,6 +13,11 @@ from src.utils_data import image_files_from_folder, flo_files_from_folder, read_
 import src.flow_transforms as f_transforms
 
 
+# Mean augmentation global variable
+MEAN = ((0.173935, 0.180594, 0.192608), (0.172978, 0.179518, 0.191300))  # PIV-LiteFlowNet-en (Cai, 2019)
+# MEAN = ((0.411618, 0.434631, 0.454253), (0.410782, 0.433645, 0.452793))  # LiteFlowNet (Hui, 2018)
+
+
 class PIVData(Dataset):
     def __init__(self, args, is_cropped: bool = False, root: str = '', replicates: int = 1, mode: str = 'train',
                  transform: Optional[object] = None) -> None:
@@ -74,7 +79,7 @@ class PIVData(Dataset):
     def __len__(self) -> int:
         return self.size
 
-    def __getitem__(self, index: int) -> Tuple[List[torch.Tensor], torch.Tensor]:
+    def __getitem__(self, index: int) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
         index = index % self.size
 
         img1 = read_gen(self.image_list[index][0])
@@ -98,7 +103,11 @@ class PIVData(Dataset):
         else:
             transformer = self.transform
 
+        # Instantiate norm augmentation
+        norm_aug = f_transforms.Normalize(mean=MEAN)
+
         res_data = tuple(transformer(*data))
+        res_data = tuple(norm_aug(*res_data))
         return res_data
 
 
@@ -157,7 +166,8 @@ class InferenceRun(Dataset):
         # Cropper and totensor tranformer for the images
         transformer = transforms.Compose([
             transforms.CenterCrop(self.render_size),
-            transforms.ToTensor()
+            transforms.ToTensor(),
+            f_transforms.Normalize(mean=MEAN)
         ])
 
         # Read and transform file into tensor
@@ -238,7 +248,8 @@ class InferenceEval(Dataset):
         # Cropper and totensor tranformer for the images and flow
         transformer = f_transforms.Compose([
             f_transforms.Crop(self.render_size, crop_type='center'),
-            f_transforms.ModToTensor()
+            f_transforms.ModToTensor(),
+            f_transforms.Normalize(mean=MEAN)
         ])
 
         res_data = tuple(transformer(*data))

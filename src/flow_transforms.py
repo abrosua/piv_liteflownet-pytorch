@@ -8,7 +8,7 @@ import math
 import numbers
 import random
 import collections
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union, Any
 
 from src.utils_plot import resize_flow, horizontal_flip_flow, vertical_flip_flow
 
@@ -404,20 +404,35 @@ class RandomVerticalFlip(object):
 # GLOBAL Transformer
 class Normalize(object):
     """
-    Given mean: (R, G, B) and std: (R, G, B), will normalize each channel of the torch Tensor,
+    Given mean: (R, G, B) and std: (R, G, B), will normalize each channel of the torch Tensor in [C, H, W] format!
     i.e. channel = (channel - mean) / std
     """
-    def __init__(self, mean: List, std: List) -> None:
-        self.mean = torch.tensor(mean)
-        self.std = torch.tensor(std)
+    def __init__(self, mean: Tuple[Tuple[float, ...], ...], std: Tuple[Tuple[float, ...], ...] = ((1.0, 1.0, 1.0))
+                 ) -> None:
+        # Mean and St. Deviation initialization for the Normalization transformer
+        if len(mean) == 1:
+            self.mean = (mean[0], mean[0])
+        elif len(mean) == 2:
+            self.mean = mean
+        else:
+            raise ValueError(f'Unknown mean input format ({mean})!')
+
+        if len(std) == 1:
+            self.std = (std[0], std[0])
+        elif len(std) == 2:
+            self.std = std
+        else:
+            raise ValueError(f'Unknown standard deviation (std) input format ({std})!')
 
     def __call__(self, img_list: List[torch.Tensor], label_list: List[np.array]
                  ) -> Tuple[List[torch.Tensor], List[np.array]]:
-        for img in img_list:
-            for t, m, s in zip(img, self.mean, self.std):
-                t.sub_(m).div_(s)
 
-        return img_list, label_list
+        norm_img_list = []
+        for i, img in enumerate(img_list):
+            norm = transforms.Normalize(self.mean[i], self.std[i])
+            norm_img_list.append(norm(img))
+
+        return norm_img_list, label_list
 
 
 class Resize(object):
