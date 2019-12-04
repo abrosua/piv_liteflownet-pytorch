@@ -3,6 +3,7 @@ import numpy as np
 
 import os, time, re
 import subprocess, shutil
+import argparse
 import inspect
 from os.path import *
 from typing import Dict, Optional, List, Tuple, Union, Iterable, Any
@@ -75,14 +76,39 @@ def add_arguments_for_module(parser, module, argument_for_class, default, skip_p
         if arg not in skip_params + ['self', 'args']:
             if not np.array([bool(re.search(x, arg)) for x in exception]).any():
                 if arg in list(parameter_defaults.keys()):
-                    argument_group.add_argument('--{}'.format(cmd_arg), type=type(parameter_defaults[arg]),
-                                                default=parameter_defaults[arg])
+                    extra_args = args_exception(parameter_defaults[arg])
+                    argument_group.add_argument('--{}'.format(cmd_arg), **extra_args)
+
                 elif (defaults is not None and i < len(defaults)):
-                    argument_group.add_argument('--{}'.format(cmd_arg), type=type(defaults[i]), default=defaults[i])
+                    extra_args= args_exception(defaults[i])
+                    argument_group.add_argument('--{}'.format(cmd_arg), **extra_args)
+
                 else:
                     print(("[Warning]: non-default argument '{}' detected on class '{}'. "
 						   "This argument cannot be modified via the command line"
 						   .format(arg, module.__class__.__name__)))
+
+
+def args_exception(args_val):
+    extra_args = {'type': type(args_val), 'default': args_val}
+
+    if isinstance(args_val, (tuple, list)):
+        extra_args.update({'nargs': '+', 'type': type(args_val[0])})
+    elif isinstance(args_val, bool):
+        extra_args.update({'nargs': '?', 'type': _str2bool, 'const': not args_val, 'default': args_val})
+
+    return extra_args
+
+
+def _str2bool(v):
+    if isinstance(v, bool):
+       return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
 def create_instance(module: object, config_params: dict, **kwargs) -> Any:
