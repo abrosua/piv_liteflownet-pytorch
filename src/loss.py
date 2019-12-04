@@ -87,26 +87,41 @@ class MultiScale(nn.Module):
 	"""
 	Multi stage loss calculation to calculate total loss.
 	Pyramid level is sorted BACKWARD (e.g., 6, 5, 4, 3, 2, 1)
+	The default arguments are based on the original LiteFlowNet model (Hui, 2018)
+	Args:
+		div_scale (float)	: the flow division value.
+		startScale (int)	: the lowest pyramid level to use by the model.
+		l_weight (tuple)	: the pyramidal loss weights to use.
+		norm (str)			: Loss norm method to choose.
 	"""
-	def __init__(self, div_scale=0.05, startScale=2, l_weight=None, norm='L1'):
+	def __init__(self, div_scale: float = 0.05, startScale: int = 2, use_mean: bool = True,
+				 l_weight: Union[Tuple[float, ...], List[float]] = (0.32, 0.08, 0.02, 0.01, 0.005), norm: str = 'L1'
+				 ) -> None:
 		super(MultiScale, self).__init__()
 
-		if l_weight is None:  # Default value, taken from Hui, 2018
-			l_weight = (0.32, 0.08, 0.02, 0.01, 0.005)
+		if isinstance(l_weight, (list, tuple)):
+			self.loss_weights = l_weight
+		else:
+			raise ValueError(f'Unknown loss weight values ({l_weight})!')
 
+		self.use_mean = use_mean
 		self.startScale = startScale
-		self.loss_weights = l_weight
 		self.numScales = len(l_weight)
 
 		self.div_flow = div_scale
 		self.multiScales = [nn.AvgPool2d(self.startScale * (2 ** scale), self.startScale * (2 ** scale))
 							for scale in reversed(range(self.numScales))]
 
-		self.loss = L1() if norm == 'L1' else L2()
+		if norm == 'L1':
+			self.loss = L1(mean=self.use_mean)
+		elif norm == 'L2':
+			self.loss = L2(mean=self.use_mean)
+		else:
+			raise ValueError(f'Unknown input value of "norm" ({norm})! Choose between L1 or L2 only!')
 		self.loss_labels = ['MultiScale-' + norm, 'EPE'],
 
-	def forward(self, output, target):
-		lossvalue, epevalue = 0, 0
+	def forward(self, output: Union[torch.Tensor, List[torch.Tensor]], target: torch.Tensor):
+		lossvalue, epevalue = 0.0, 0.0
 
 		if type(output) in [tuple, list]:  # For TRAINING mode/error
 			assert self.numScales == len(output)  # Check the number of pyramid level used
@@ -116,18 +131,18 @@ class MultiScale(nn.Module):
 				target_ = self.multiScales[i](target)
 
 				if type(output_) not in [tuple, list]:
-					epevalue += self.loss_weights[i] * EPE(output_, target_)
+					epevalue += self.loss_weights[i] * EPE(output_, target_, mean=self.use_mean)
 					lossvalue += self.loss_weights[i] * self.loss(output_, target_)
 
 				else:
 					for out_ in output_:
-						epevalue += self.loss_weights[i] * EPE(out_, target_)
+						epevalue += self.loss_weights[i] * EPE(out_, target_, mean=self.use_mean)
 						lossvalue += self.loss_weights[i] * self.loss(out_, target_)
 
 			return [lossvalue, epevalue]
 
 		else:  # For TESTING mode/error
-			epevalue += EPE(output, target)
+			epevalue += EPE(output, target, mean=self.use_mean)
 			lossvalue += self.loss(output, target)
 			return [lossvalue, epevalue]
 
@@ -137,7 +152,7 @@ class LevelLoss(nn.Module):
 	Multi stage loss calculation to calculate loss at each stage.
 	Pyramid level is sorted BACKWARD (e.g., 6, 5, 4, 3, 2, 1)
 	"""
-	def __init__(self, div_scale=0.05, startScale=2, n_level=5, norm='L1'):
+	def __init__(self, div_scale: float = 0.05, startScale: int = 2, n_level: int = 5, norm: str = 'L1') -> None:
 		super(LevelLoss, self).__init__()
 
 		self.startScale = startScale
@@ -183,11 +198,19 @@ def hui_loss(level_eval=False, mul_scale=20, norm='L1'):
 		return MultiScale(div_scale=1/mul_scale, norm=norm)
 
 
-def piv_loss(level_eval=False, mul_scale=5, norm='L1'):
-	if level_eval:  # Evaluate the error on every level!
-		return LevelLoss(div_scale=1 / mul_scale, startScale=1, n_level=6, norm=norm)
-
-	else:
+def piv_loss(level_eval=False, mul_scale=5, norm='L1', version: int = 1):
+	# Input Checking
+	if version == 1:  # Loss for PIV-LiteFlowNet-en
 		# loss_weight = (0.32, 0.08, 0.02, 0.01, 0.005, 0.01)
 		loss_weight = (0.001, 0.001, 0.001, 0.001, 0.001, 0.01)  # Value taken from Cai, 2019
-		return MultiScale(div_scale=1 / mul_scale, startScale=1, l_weight=loss_weight, norm=norm)
+	elif version == 2:  # Loss for PIV-LiteFlowNet2-en
+		loss_weight = (0.001, 0.001, 0.001, 0.001, 0.01)  # Value adapted from Cai, 2019
+	else:
+		raise ValueError(f'Unknown input value for "version" ({version})! Choose between 1 or 2 only!')
+
+	# Define the error
+	if level_eval:  # Evaluate the error on every level!
+		return LevelLoss(div_scale=1 / mul_scale, startScale=version, n_level=6, norm=norm)
+
+	else:
+		return MultiScale(div_scale=1 / mul_scale, startScale=version, l_weight=loss_weight, norm=norm)
