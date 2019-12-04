@@ -269,9 +269,9 @@ def get_transform(args):
 
     # Training set transformer (Data Augmentation)
     train_tranformer = f_transforms.Compose([
-        f_transforms.RandomTranslate(20),
+        f_transforms.RandomTranslate(20),  # 16 or 20
         f_transforms.RandomRotate(17, diff_angle=3),
-        f_transforms.RandomScale([0.9, 2.0]),
+        f_transforms.RandomScale([0.95, 1.45]),
         f_transforms.Crop(args.crop_size, crop_type='rand'),
         f_transforms.ModToTensor(),
         f_transforms.RandomPhotometric(

@@ -15,7 +15,8 @@ from src.utils_plot import resize_flow, horizontal_flip_flow, vertical_flip_flow
 
 # Pixel VALUE transformer
 class RandomPhotometric(object):
-    """Applies photometric augmentations to a list of image tensors
+    """
+    Applies photometric augmentations to a list of image tensors
         i.e., Contrast, Brightness, Color mult., Noise and Gamma.
     Each image in the list is augmented in the same way (Sequential process).
     """
@@ -335,10 +336,9 @@ class Crop(object):
 
         if pad_h > 0 or pad_w > 0:
             if self.padding is None:
-                raise RuntimeError("flowtransforms.Crop() need padding while padding argument is None\n")
+                raise RuntimeError("flow_transforms.Crop() need padding while padding argument is None\n")
 
-            border = (pad_w_half, pad_h_half, pad_w - pad_w_half,
-                      pad_h - pad_h_half)
+            border = (pad_w_half, pad_h_half, pad_w - pad_w_half, pad_h - pad_h_half)
 
             # Image padding
             img_list = [
@@ -407,7 +407,7 @@ class Normalize(object):
     Given mean: (R, G, B) and std: (R, G, B), will normalize each channel of the torch Tensor in [C, H, W] format!
     i.e. channel = (channel - mean) / std
     """
-    def __init__(self, mean: Tuple[Tuple[float, ...], ...], std: Tuple[Tuple[float, ...], ...] = ((1.0, 1.0, 1.0))
+    def __init__(self, mean: Tuple[Tuple[float, ...], ...], std: Tuple[Tuple[float, ...], ...] = ((1.0, 1.0, 1.0),)
                  ) -> None:
         # Mean and St. Deviation initialization for the Normalization transformer
         if len(mean) == 1:
