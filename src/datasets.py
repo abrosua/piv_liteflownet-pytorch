@@ -14,7 +14,8 @@ import src.flow_transforms as f_transforms
 
 
 # Mean augmentation global variable
-MEAN = ((0.173935, 0.180594, 0.192608), (0.172978, 0.179518, 0.191300))  # PIV-LiteFlowNet-en (Cai, 2019)
+MEAN = ((0.194286, 0.190633, 0.191766), (0.194220, 0.190595, 0.191701))  # PIV-LiteFlowNet2-en (Silitonga, 2020)
+# MEAN = ((0.173935, 0.180594, 0.192608), (0.172978, 0.179518, 0.191300))  # PIV-LiteFlowNet-en (Cai, 2019)
 # MEAN = ((0.411618, 0.434631, 0.454253), (0.410782, 0.433645, 0.452793))  # LiteFlowNet (Hui, 2018)
 
 
@@ -167,14 +168,15 @@ class InferenceRun(Dataset):
         transformer = transforms.Compose([
             transforms.CenterCrop(self.render_size),
             transforms.ToTensor(),
-            f_transforms.Normalize(mean=MEAN)
         ])
+
+        # Mean augmentation
+        norm_aug = [transforms.Normalize(mean_idx, (1.0, 1.0, 1.0)) for mean_idx in MEAN]
 
         # Read and transform file into tensor
         imgs = []
-        for imname in self.image_list[index]:
-            img = transformer(read_gen(imname))
-            imgs.append(img)
+        for i, imname in enumerate(self.image_list[index]):
+            imgs.append(norm_aug[i](transformer(read_gen(imname))))
 
         return imgs, im_name
 

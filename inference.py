@@ -28,7 +28,8 @@ args_output = './out.flo'
 ##########################################################
 
 # Mean augmentation global variable
-MEAN = ((0.173935, 0.180594, 0.192608), (0.172978, 0.179518, 0.191300))  # PIV-LiteFlowNet-en (Cai, 2019)
+MEAN = ((0.194286, 0.190633, 0.191766), (0.194220, 0.190595, 0.191701))  # PIV-LiteFlowNet2-en (Silitonga, 2020)
+# MEAN = ((0.173935, 0.180594, 0.192608), (0.172978, 0.179518, 0.191300))  # PIV-LiteFlowNet-en (Cai, 2019)
 # MEAN = ((0.411618, 0.434631, 0.454253), (0.410782, 0.433645, 0.452793))  # LiteFlowNet (Hui, 2018)
 
 
@@ -212,9 +213,9 @@ class Inference:
 		transformer = [
 			transforms.Compose([
 				transforms.ToTensor(),
-				transforms.Normalize(MEAN[i], (1.0, 1.0, 1.0))
+				transforms.Normalize(mean_idx, (1.0, 1.0, 1.0))
 			])
-			for i in range(2)]
+			for mean_idx in MEAN]
 
 		tensor_im1 = transformer[0](im1).to(device)
 		tensor_im2 = transformer[1](im2).to(device)
@@ -263,10 +264,15 @@ if __name__ == '__main__':
 	# Displaying the results (for manual parser)
 	out_name = os.path.join(os.path.dirname(args_img1), 'test_piv.flo')
 	out_name_q = os.path.join(os.path.dirname(args_img1), 'test_piv.png')
+	out_flow = Inference.parser(net,
+								PIL.Image.open(args_img1).convert('RGB'),
+								PIL.Image.open(args_img2).convert('RGB'),
+								device=device)
 
-	out_flow = None
 	write_flow(out_flow, out_name)
 	u, v = quiver_plot(out_flow, filename=out_name_q)
+
+	# Object output (Sniklaus, PyTorch)
 	object_output = open(args_output, 'wb')
 
 	np.array([80, 73, 69, 72], np.uint8).tofile(object_output)
