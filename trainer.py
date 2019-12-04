@@ -58,7 +58,7 @@ utils.add_arguments_for_module(parser, models, argument_for_class='model', defau
 utils.add_arguments_for_module(parser, loss, argument_for_class='loss', default='MultiScale',
                                parameter_defaults={'div_scale': 0.2,
                                                    'startScale': 1,
-                                                   'l_weight': (0.001, 0.001, 0.001, 0.001, 0.001, 0.01),
+                                                   'l_weight': [0.001, 0.001, 0.001, 0.001, 0.001, 0.01],
                                                    'norm': 'L2'})
 
 utils.add_arguments_for_module(parser, torch.optim, argument_for_class='optimizer', default='Adam',
@@ -211,14 +211,17 @@ class Train:
 
 if __name__ == '__main__':
     # ------------------------------ DEBUGGING (temp) ------------------------------
-    sys.argv = ['trainer.py', # '--no_cuda',
-                '--crop_size', '64', '64',
-                '-b', '2',
-                '--seed', '69',
-                '--name', 'train_trial',
-                '--training_dataset_root', '../piv_datasets/cai2018/ztest_json',
-                '--validation_dataset_root', '../piv_datasets/cai2018/ztest_json',
-                ] #'--logger_disabled', 'True']
+    sys.argv = [
+        'trainer.py', # '--no_cuda',
+        '--crop_size', '64', '64',
+        '-b', '2',
+        '--seed', '69',
+        '--name', 'train_trial',
+        '--model', 'LiteFlowNet2', '--model_lowest_level', '2',
+        '--loss_startScale', '2', '--loss_l_weight', '0.001', '0.001', '0.001', '0.001', '0.01', '--loss_use_mean', 'false',
+        '--training_dataset_root', '../piv_datasets/cai2018/ztest_json',
+        '--validation_dataset_root', '../piv_datasets/cai2018/ztest_json',
+        '--logger_disabled', 'true']
 
     # ------------------------------ PARSING THE INPUT ------------------------------
     # Parse the official arguments

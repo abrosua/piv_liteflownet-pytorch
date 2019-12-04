@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Union
 from collections import OrderedDict
 
 from src.correlation import FunctionCorrelation  # the custom cost volume layer
@@ -29,16 +29,14 @@ def Backward(tensorInput, tensorFlow):
 							tensorFlow[:, 1:2, :, :] / ((tensorInput.size(2) - 1.0) / 2.0)], 1)
 
 	return torch.nn.functional.grid_sample(input=tensorInput,
-										   grid=(Backward_tensorGrid[str(tensorFlow.size())] + tensorFlow).permute(0, 2,
-																												   3,
-																												   1),
+										   grid=(Backward_tensorGrid[str(tensorFlow.size())] +
+												 tensorFlow).permute(0, 2, 3, 1),
 										   mode='bilinear', padding_mode='zeros')
 
 
 # ----------- NETWORK DEFINITION -----------
 class LiteFlowNet(torch.nn.Module):
-	def __init__(self, starting_scale: int = 40, lowest_level: int = 2,
-				 mean_aug: Optional[Tuple[List[float], List[float]]] = None) -> None:
+	def __init__(self, starting_scale: int = 40, lowest_level: int = 2) -> None:
 		super(LiteFlowNet, self).__init__()
 		self.mean_aug = [[0, 0, 0], [0, 0, 0]]
 
@@ -306,7 +304,7 @@ class LiteFlowNet(torch.nn.Module):
 		self.NetE_R = torch.nn.ModuleList([
 			Regularization(pyr_level, self.SCALEFACTOR[pyr_level]) for pyr_level in self.level2use])  # NetE - R
 
-	def forward(self, img1: torch.Tensor, img2: torch.Tensor):
+	def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> Union[torch.Tensor, List[torch.Tensor]]:
 		"""
 		Mean normalization augmentation is excluded from the model definition!
 		The norm are added either during the Datasets definition (for DataLoader parsing)
@@ -636,7 +634,7 @@ class LiteFlowNet2(torch.nn.Module):
 		self.NetE_R = torch.nn.ModuleList([
 			Regularization(pyr_level, self.SCALEFACTOR[pyr_level]) for pyr_level in self.level2use])  # NetE - R
 
-	def forward(self, img1: torch.Tensor, img2: torch.Tensor):
+	def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> Union[torch.Tensor, List[torch.Tensor]]:
 		"""
 		Mean normalization augmentation is excluded from the model definition!
 		The norm are added either during the Datasets definition (for DataLoader parsing)
