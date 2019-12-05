@@ -59,6 +59,7 @@ class ExtractDataset:
                  training_size: float,
                  use_val: bool = True,
                  random_state: int = 69,
+                 exception_files: Optional[List[str]] = None,
                  verbose: bool = True) -> None:
         """Class for creating csv files of train, validation, and test
         Parameters
@@ -80,6 +81,8 @@ class ExtractDataset:
         self.test_size = 1 - training_size
         self.random_state = random_state
 
+        self.exception_files = [] if exception_files is None else exception_files
+
         self.use_val = use_val
         self.verbose = verbose
 
@@ -97,8 +100,10 @@ class ExtractDataset:
         files = sorted(glob(os.path.join(self.root, f'*{self.extension}')))
         for file in files:
             fname = os.path.basename(file)
-            frule = os.path.splitext(fname)[0].split('_')
+            if fname in self.exception_files:
+                continue
 
+            frule = os.path.splitext(fname)[0].split('_')
             if rule is None:
                 name.append(fname)
             else:
