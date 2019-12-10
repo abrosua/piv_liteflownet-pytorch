@@ -290,6 +290,8 @@ def get_transform(args):
 
     # Validation set transformer (Data Augmentation)
     val_tranformer = f_transforms.Compose([
+        f_transforms.RandomHorizontalFlip(),
+        f_transforms.RandomVerticalFlip(),
         f_transforms.Crop(args.crop_size, crop_type='rand'),
         f_transforms.ModToTensor(),
     ])
