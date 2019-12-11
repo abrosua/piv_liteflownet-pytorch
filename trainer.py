@@ -136,12 +136,14 @@ class Train:
                     batch_loss.backward()
                     self.optimizer.step()
 
+                batch_loss_array = batch_loss.item()
+
                 # LOGGER
                 log_name = ('_').join([loader_key, 'batch', self.loss_label])
                 step_count = (epoch - 1) * l_dataloader + (batch_idx + 1)
-                self.experiment.log_metric(log_name, batch_loss, step=step_count, epoch=epoch)
+                self.experiment.log_metric(log_name, batch_loss_array, step=step_count, epoch=epoch)
 
-                total_epoch_loss += batch_loss.item()
+                total_epoch_loss += batch_loss_array
                 assert not np.isnan(total_epoch_loss)
 
         epoch_loss = total_epoch_loss / float(l_dataloader)
