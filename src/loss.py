@@ -142,8 +142,9 @@ class MultiScale(nn.Module):
 			return [lossvalue, epevalue]
 
 		else:  # For TESTING mode/error
-			epevalue += EPE(output, target, mean=self.use_mean)
-			lossvalue += self.loss(output, target)
+			target_ = self.multiScales[-1](target)
+			epevalue += EPE(output, target_, mean=self.use_mean)
+			lossvalue += self.loss(output, target_)
 			return [lossvalue, epevalue]
 
 

@@ -16,9 +16,6 @@ from src import utils
 from src import models, loss, datasets
 
 
-model_names = sorted(name for name in models.__all__)
-loss_names = sorted(name for name in loss.__all__)
-
 # ------------------ CLI ------------------
 parser = argparse.ArgumentParser(description='Training script for LiteFlowNet')
 
