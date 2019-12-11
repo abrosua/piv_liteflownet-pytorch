@@ -31,7 +31,7 @@ parser.add_argument('--crop_size', type=int, nargs='+', default=[256, 256],
 parser.add_argument("--rgb_max", type=float, default=255.)
 
 parser.add_argument('--weight_decay', '-wd', type=float, default=4e-4, metavar='W', help='weight decay parameter')
-parser.add_argument('--bias-decay', '-bd', type=float, default=0, metavar='B', help='bias decay parameter')
+parser.add_argument('--bias_decay', '-bd', type=float, default=0, metavar='B', help='bias decay parameter')
 
 parser.add_argument('--number_workers', '-nw', '--num_workers', type=int, default=8)
 parser.add_argument('--number_gpus', '-ng', type=int, default=-1, help='number of GPUs to use')
@@ -42,6 +42,7 @@ parser.add_argument('--name', default='run', type=str, help='a name to append to
 parser.add_argument('--save', '-s', default='./work', type=str, help='directory for saving')
 
 parser.add_argument('--validation_frequency', type=int, default=1, help='validate every n epochs')
+parser.add_argument('--backup_frequency', type=int, default=25, help='save backup at every n epochs')
 parser.add_argument('--render_validation', action='store_true',
                     help='run inference (save flows to file) and every validation_frequency epoch')
 parser.add_argument('--inference_size', type=int, nargs='+', default = [-1,-1],
@@ -64,8 +65,9 @@ utils.add_arguments_for_module(parser, loss, argument_for_class='loss', default=
 utils.add_arguments_for_module(parser, torch.optim, argument_for_class='optimizer', default='Adam',
                                skip_params=['params'])
 
-utils.add_arguments_for_module(parser, torch.optim.lr_scheduler, argument_for_class='lr_scheduler', default=None,
-                               skip_params=['params'])
+utils.add_arguments_for_module(parser, torch.optim.lr_scheduler, argument_for_class='lr_scheduler', default='MultiStepLR',
+                               skip_params=['optimizer'],
+                               parameter_defaults={'milestones': [-1]})
 
 utils.add_arguments_for_module(parser, datasets, argument_for_class='training_dataset', default='PIVData',
                                skip_params=['is_cropped', 'transform'],
@@ -172,7 +174,7 @@ class Train:
         progress = tqdm(list(range(self.args.start_epoch, self.args.total_epochs + 1)), miniters=1, ncols=100,
                         unit='epoch', desc='Overall Progress', leave=True, position=0)
         OFFSET = 1
-        best_err = 1e8
+        best_err = args.best_err
         best_epoch = self.args.start_epoch
 
         for epoch in progress:
@@ -182,9 +184,6 @@ class Train:
                 if bool(re.search('train', key)):  # Training
                     loss = self.perform_epoch(loader_key=key, epoch=epoch, offset=OFFSET)
                     OFFSET += 1
-
-                    if ((epoch - 1) % self.args.validation_frequency) == 0:
-                        self.save_model(epoch, loss, OFFSET, False, filename='train-checkpoint.pth.tar')
 
                 elif bool(re.search('val', key)) and ((epoch - 1) % self.args.validation_frequency) == 0:  # Validation
                     loss = self.perform_epoch(loader_key=key, epoch=epoch, offset=OFFSET)
@@ -206,22 +205,34 @@ class Train:
                 self.experiment.log_metric(log_name, loss, step=epoch, epoch=epoch)
                 self.experiment.log_metric('best_epoch', best_epoch)
 
+            # Epoch update
+            if self.lr_scheduler is not None:
+                self.lr_scheduler.step()
+                self.experiment.log_metric('current_lr', self.lr_scheduler.get_lr(), step=epoch, epoch=epoch)
+
+            if ((epoch - 1) % self.args.backup_frequency) == 0:
+                self.save_model(epoch, best_err, OFFSET, False, filename=f'backup_{epoch}.pth.tar')
+
         tqdm.write("\n")
 
 
 if __name__ == '__main__':
     # ------------------------------ DEBUGGING (temp) ------------------------------
-    sys.argv = [
+    debug_input = [
         'trainer.py', # '--no_cuda',
         '--crop_size', '64', '64',
         '-b', '2',
         '--seed', '69',
         '--name', 'train_trial',
-        '--model', 'LiteFlowNet2', '--model_lowest_level', '2',
+        '--model', 'LiteFlowNet2', '--model_starting_scale', '10', '--model_lowest_level', '2',
+        '--optimizer_lr', '4e-5',
         '--loss_startScale', '2', '--loss_l_weight', '0.001', '0.001', '0.001', '0.001', '0.01', '--loss_use_mean', 'false',
+        '--lr_scheduler', 'MultiStepLR', '--lr_scheduler_milestones', '120', '240', '360', '480', '600', '--lr_scheduler_gamma', '0.5',
         '--training_dataset_root', '../piv_datasets/cai2018/ztest_json',
         '--validation_dataset_root', '../piv_datasets/cai2018/ztest_json',
         '--logger_disabled', 'true']
+
+    # sys.argv = debug_input  # Uncomment for debugging
 
     # ------------------------------ PARSING THE INPUT ------------------------------
     # Parse the official arguments
@@ -270,7 +281,10 @@ if __name__ == '__main__':
             os.makedirs(args.save)
 
         args.cuda = not args.no_cuda and torch.cuda.is_available()
-        args.log_file = os.path.join(args.save, 'args.txt')
+        if args.resume:
+            args.log_file = os.path.join(args.save, 'args_resume.txt')
+        else:
+            args.log_file = os.path.join(args.save, 'args.txt')
 
         # dict to collect activation gradients (for training debug purpose)
         args.grads = {}
@@ -367,12 +381,13 @@ if __name__ == '__main__':
                 checkpoint = torch.load(args.resume)
                 args.start_epoch = checkpoint['epoch']
 
-                best_err = checkpoint['best_EPE']
+                args.best_err = checkpoint['best_EPE']
                 model_and_loss.module.model.load_state_dict(checkpoint['model_state_dict'])
                 block.log("Loaded checkpoint '{}' (at epoch {})".format(args.resume, checkpoint['epoch']))
             else:
                 raise ValueError(f"The RESUME file is not found! Fix the file path ({args.resume})!")
         else:
+            args.best_err = 1e8  # Initial best error
             block.log("Random initialization")
 
     ## Dynamically load the optimizer with parameters passed in via "--optimizer_[param]=[value]" arguments
@@ -422,8 +437,12 @@ if __name__ == '__main__':
             block.log("{} = {} ({})".format(param, default, type(default)))
 
     ## Log all arguments to file
+    if not args.resume and os.path.isfile(args.log_file):  # Overwrite file!
+        os.remove(args.log_file)
+
     for argument, value in sorted(vars(args).items()):
         block.log2file(args.log_file, '{}: {}'.format(argument, value))
+    block.log2file(args.log_file, '------------------- RESUME -------------------\n') if args.resume else None
 
     # |------------------------------------------------------------------------|
     # |------------------------------ START HERE ------------------------------|
