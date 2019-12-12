@@ -378,7 +378,7 @@ if __name__ == '__main__':
             if os.path.isfile(args.resume):
                 block.log("Loading checkpoint '{}'".format(args.resume))
                 checkpoint = torch.load(args.resume)
-                args.start_epoch = checkpoint['epoch']
+                args.start_epoch = checkpoint['epoch'] + 1
 
                 args.best_err = checkpoint['best_EPE']
                 model_and_loss.module.model.load_state_dict(checkpoint['model_state_dict'])
