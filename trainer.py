@@ -207,7 +207,7 @@ class Train:
             # Epoch update
             if self.lr_scheduler is not None:
                 self.lr_scheduler.step()
-                self.experiment.log_metric('current_lr', self.lr_scheduler.get_lr(), step=epoch, epoch=epoch)
+                self.experiment.log_metric('current_lr', self.lr_scheduler.get_lr()[0], step=epoch, epoch=epoch)
 
             if ((epoch - 1) % self.args.backup_frequency) == 0:
                 self.save_model(epoch, best_err, OFFSET, False, filename=f'backup_{epoch}.pth.tar')
