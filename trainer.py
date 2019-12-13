@@ -109,12 +109,12 @@ class Train:
             self.model_and_loss.eval()
             title = 'Validating Epoch {}'.format(epoch)
             progress = tqdm(utils.IteratorTimer(self.data_loader[loader_key]), ncols=100, unit='batch',
-                            total=l_dataloader, leave=True, position=offset, desc=title)
+                            total=l_dataloader, leave=False, position=offset, desc=title)
         elif bool(re.search('train', loader_key)):
             self.model_and_loss.train()
             title = 'Training Epoch {}'.format(epoch)
             progress = tqdm(utils.IteratorTimer(self.data_loader[loader_key]), ncols=120, unit='batch',
-                            total=l_dataloader, smoothing=.9, miniters=1, leave=True, position=offset, desc=title)
+                            total=l_dataloader, smoothing=.9, miniters=1, leave=False, position=offset, desc=title)
         else:
             raise ValueError(f'Unknown loader key ({loader_key})! Must contain either "train" or "val" ')
 
