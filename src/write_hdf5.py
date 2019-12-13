@@ -7,19 +7,20 @@ import numpy as np
 import os
 import json
 from glob import glob
+from typing import List, Dict, Tuple
 
 from src.utils_data import read_gen
 
 
 class DatasetH5(Dataset):
-	def __init__(self, dataset_dict):
+	def __init__(self, dataset_dict: Dict[List[str]]) -> None:
 		self.dataset_dict = dataset_dict
 		self.dataset_length = len(dataset_dict)
 
-	def __len__(self):
+	def __len__(self) -> int:
 		return self.dataset_length
 
-	def __getitem__(self, idx):
+	def __getitem__(self, idx: int) -> Tuple[List[np.array], np.array]:
 		# Call via indexing
 		floname = self.dataset_dict[idx]
 		imnames = [imname_modifier(floname, i+1) for i in range(2)]
@@ -31,7 +32,7 @@ class DatasetH5(Dataset):
 		return images, flo
 
 
-def import_dataset(json_paths):
+def import_dataset(json_paths: List[str]) -> Dict[str, List[str]]:
 	dataset = {}
 
 	for json_path in json_paths:
@@ -54,7 +55,11 @@ def import_dataset(json_paths):
 	return dataset
 
 
-def imname_modifier(floname: str, idx: int = 1):
+def import_single_set(floname: str) -> Dict[str, List[str]]:
+	return {"single": [floname]}
+
+
+def imname_modifier(floname: str, idx: int = 1) -> str:
 	for ext in ['.jpg', '.jpeg', '.png', '.bmp', '.tif', '.ppm']:
 		imname = str(floname.rsplit('_', 1)[0]) + f'_img{idx}' + ext
 
@@ -62,7 +67,7 @@ def imname_modifier(floname: str, idx: int = 1):
 			return imname
 
 
-def write_hdf5(dataset_dict, filename):
+def write_hdf5(dataset_dict: Dict[str, List[str]], filename: str) -> None:
 	dataloader = {}
 
 	# Define placeholder
@@ -96,7 +101,8 @@ def write_hdf5(dataset_dict, filename):
 if __name__ == "__main__":
 	# INPUT
 	h5file = 'piv_cai2018.h5'
-	root = '..\..\piv_datasets\cai2018\ztest_hdf5'
+	# root = '..\..\piv_datasets\cai2018\ztest_hdf5'
+	root = '../../piv_datasets/cai2018/ztest_hdf5'
 	json_root = os.path.join(os.path.dirname(root), 'ztest_trainval')
 
 	if not os.path.isdir(root):
@@ -111,7 +117,12 @@ if __name__ == "__main__":
 	for key in raw_dataset.keys():
 		tqdm.write(f"{key} dataset length = {len(raw_dataset[key])}")
 
+	# Gather single dataset
+	singlepath = os.path.join(root, "single.h5")
+	single_dataset = import_single_set("/home/faber/thesis/thesis_faber/images/demo/DNS_turbulence_flow.flo")
+
 	# Write to hdf5 file
-	write_hdf5(raw_dataset, filepath)
+	# write_hdf5(raw_dataset, filepath)
+	write_hdf5(single_dataset, singlepath)
 
 	tqdm.write('DONE!')
