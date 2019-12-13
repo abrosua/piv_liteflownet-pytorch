@@ -3,8 +3,9 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
+from PIL import Image
 
-import json
+import json, h5py
 import os
 from glob import glob
 from typing import Optional, List, Tuple
@@ -17,6 +18,88 @@ import src.flow_transforms as f_transforms
 MEAN = ((0.194286, 0.190633, 0.191766), (0.194220, 0.190595, 0.191701))  # PIV-LiteFlowNet2-en (Silitonga, 2020)
 # MEAN = ((0.173935, 0.180594, 0.192608), (0.172978, 0.179518, 0.191300))  # PIV-LiteFlowNet-en (Cai, 2019)
 # MEAN = ((0.411618, 0.434631, 0.454253), (0.410782, 0.433645, 0.452793))  # LiteFlowNet (Hui, 2018)
+
+
+class PIVHdf5(Dataset):
+    def __init__(self, args, is_cropped: bool = False, root: str = '', replicates: int = 1, mode: str = 'train',
+                 transform: Optional[object] = None) -> None:
+        self.args = args
+        self.is_cropped = is_cropped
+        self.crop_size = args.crop_size
+        self.render_size = args.inference_size
+        self.transform = transform
+
+        self.replicates = replicates
+        self.set_type = mode
+
+        exts = ['.jpg', '.jpeg', '.png', '.bmp', '.tif', '.ppm']
+        dataset_list = sorted(glob(os.path.join(root, f'*.h5')))
+
+        flow_list = []
+        image1_list, image2_list = [], []
+
+        for dataset_file in dataset_list:
+            file = h5py.File(dataset_file, "r+")
+            image1_list.append(np.array(file[f"/X1_{self.set_type}"]))
+            image2_list.append(np.array(file[f"/X2_{self.set_type}"]))
+            flow_list.append(np.array(file[f"/Y_{self.set_type}"]))
+
+        # Store the dataset
+        self.image1 = np.concatenate(image1_list)
+        self.image2 = np.concatenate(image2_list)
+        self.flow = np.concatenate(flow_list)
+
+
+        self.size = self.image1.shape[0]
+
+        if self.size > 0:
+            self.frame_size = self.image1[0, ...].shape[:-1]
+
+            if (self.render_size[0] < 0) or (self.render_size[1] < 0) or \
+                    (self.frame_size[0] % 64) or (self.frame_size[1] % 64):
+                self.render_size[0] = ((self.frame_size[0])//64) * 64
+                self.render_size[1] = ((self.frame_size[1])//64) * 64
+
+            args.inference_size = self.render_size
+        else:
+            self.frame_size = None
+
+        # Sanity check on the number of image pair and flow
+        assert self.image1.shape[0] == self.flow.shape[0]
+
+    def __len__(self) -> int:
+        return self.size
+
+    def __getitem__(self, index: int) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
+        index = index % self.size
+
+        img1 = Image.fromarray(self.image1[index, ...])
+        img2 = Image.fromarray(self.image2[index, ...])
+        flow = self.flow[index, ...]
+        data = [[img1, img2], [flow]]
+
+        if self.is_cropped:
+            crop_type = 'rand'
+            csize = self.crop_size
+        else:
+            crop_type = 'center'
+            csize = self.render_size
+
+        # Instantiate the transformer
+        if self.transform is None:
+            transformer = f_transforms.Compose([
+                f_transforms.Crop(csize, crop_type=crop_type),
+                f_transforms.ModToTensor()
+            ])
+        else:
+            transformer = self.transform
+
+        # Instantiate norm augmentation
+        norm_aug = f_transforms.Normalize(mean=MEAN)
+
+        res_data = tuple(transformer(*data))
+        res_data = tuple(norm_aug(*res_data))
+        return res_data
 
 
 class PIVData(Dataset):
