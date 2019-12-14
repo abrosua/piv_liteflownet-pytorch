@@ -22,7 +22,7 @@ MEAN = ((0.194286, 0.190633, 0.191766), (0.194220, 0.190595, 0.191701))  # PIV-L
 
 class PIVH5(Dataset):
     def __init__(self, args, is_cropped: bool = False, root: str = '', replicates: int = 1, mode: str = 'train',
-                 transform: Optional[object] = None) -> None:
+                 transform: Optional[object] = None, load_data: bool = False, data_cache_size: int = 3) -> None:
         self.args = args
         self.is_cropped = is_cropped
         self.crop_size = args.crop_size
@@ -32,27 +32,20 @@ class PIVH5(Dataset):
         self.replicates = replicates
         self.set_type = mode
 
-        exts = ['.jpg', '.jpeg', '.png', '.bmp', '.tif', '.ppm']
+        # Caching
+        self.data_info = []
+        self.data_cache = {}
+        self.data_cache_size = data_cache_size
+
         dataset_list = sorted(glob(os.path.join(root, f'*.h5')))
 
-        flow_list = []
-        image1_list, image2_list = [], []
+        for h5dataset_fp in dataset_list:
+            self._add_data_infos(str(h5dataset_fp.resolve()), load_data)
 
-        for dataset_file in dataset_list:
-            file = h5py.File(dataset_file, "r+")
-            image1_list.append(np.array(file[f"/X1_{self.set_type}"]).astype("uint8"))
-            image2_list.append(np.array(file[f"/X2_{self.set_type}"]).astype("uint8"))
-            flow_list.append(np.array(file[f"/Y_{self.set_type}"]).astype("float32"))
-
-        # Store the dataset
-        self.image1 = np.concatenate(image1_list)
-        self.image2 = np.concatenate(image2_list)
-        self.flow = np.concatenate(flow_list)
-
-        self.size = self.image1.shape[0]
+        self.size = len(self.get_data_infos('label'))
 
         if self.size > 0:
-            self.frame_size = self.image1[0, ...].shape[:-1]
+            self.frame_size = self.data_info[0]['shape']
 
             if (self.render_size[0] < 0) or (self.render_size[1] < 0) or \
                     (self.frame_size[0] % 64) or (self.frame_size[1] % 64):
@@ -64,7 +57,9 @@ class PIVH5(Dataset):
             self.frame_size = None
 
         # Sanity check on the number of image pair and flow
-        assert self.image1.shape[0] == self.flow.shape[0]
+        assert len(self.get_data_infos('data1')) \
+               == len(self.get_data_infos('data2')) \
+               == len(self.get_data_infos('label'))
 
     def __len__(self) -> int:
         return self.size
@@ -72,9 +67,9 @@ class PIVH5(Dataset):
     def __getitem__(self, index: int) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
         index = index % self.size
 
-        img1 = Image.fromarray(self.image1[index, ...])
-        img2 = Image.fromarray(self.image2[index, ...])
-        flow = self.flow[index, ...]
+        img1 = Image.fromarray(self.get_data('data1', index))
+        img2 = Image.fromarray(self.get_data('data2', index))
+        flow = self.get_data('label', index)
         data = [[img1, img2], [flow]]
 
         if self.is_cropped:
@@ -99,6 +94,83 @@ class PIVH5(Dataset):
         res_data = tuple(transformer(*data))
         res_data = tuple(norm_aug(*res_data))
         return res_data
+
+    def _add_data_infos(self, file_path, load_data):
+        with h5py.File(file_path) as h5_file:
+            # Walk through all groups, extracting datasets
+            for gname, group in h5_file.items():
+                for dname, ds in group.items():
+                    idx = -1  # if data is not loaded its cache index is -1
+
+                    if load_data:
+                        # add data to the data cache
+                        idx = self._add_to_cache(ds.value, file_path)
+
+                    self.data_info.append(
+                        {'file_path': file_path, 'type': dname, 'shape': ds.value.shape, 'cache_idx': idx})
+
+    def _load_data(self, file_path):
+        """
+        Load data to the cache given the file path and update the cache index in the data_info structure.
+        """
+        with h5py.File(file_path) as h5_file:
+            for gname, group in h5_file.items():
+                for dname, ds in group.items():
+                    # add data to the data cache and retrieve the cache index
+                    idx = self._add_to_cache(ds.value, file_path)
+
+                    # find the beginning index of the hdf5 file we are looking for
+                    file_idx = next(i for i, v in enumerate(self.data_info) if v['file_path'] == file_path)
+
+                    # the data info should have the same index since we loaded it in the same way
+                    self.data_info[file_idx + idx]['cache_idx'] = idx
+
+        # remove an element from data cache if size was exceeded
+        if len(self.data_cache) > self.data_cache_size:
+            # remove one item from the cache at random
+            removal_keys = list(self.data_cache)
+            removal_keys.remove(file_path)
+            self.data_cache.pop(removal_keys[0])
+
+            # remove invalid cache_idx
+            self.data_info = [
+                {'file_path': di['file_path'],
+                 'type': di['type'],
+                 'shape': di['shape'],
+                 'cache_idx': -1
+                 }
+                if di['file_path'] == removal_keys[0] else di
+                for di in self.data_info
+            ]
+
+    def _add_to_cache(self, data, file_path):
+        """Adds data to the cache and returns its index. There is one cache
+        list for every file_path, containing all datasets in that file.
+        """
+        if file_path not in self.data_cache:
+            self.data_cache[file_path] = [data]
+        else:
+            self.data_cache[file_path].append(data)
+        return len(self.data_cache[file_path]) - 1
+
+    def get_data_infos(self, type):
+        """Get data infos belonging to a certain type of data.
+        """
+        data_info_type = [di for di in self.data_info if di['type'] == type]
+        return data_info_type
+
+    def get_data(self, type, i):
+        """Call this function anytime you want to access a chunk of data from the
+            dataset. This will make sure that the data is loaded in case it is
+            not part of the data cache.
+        """
+        fp = self.get_data_infos(type)[i]['file_path']
+        if fp not in self.data_cache:
+            self._load_data(fp)
+
+        # get new cache_idx assigned by _load_data_info
+        cache_idx = self.get_data_infos(type)[i]['cache_idx']
+        return self.data_cache[fp][cache_idx]
 
 
 class PIVLMDB(Dataset):
