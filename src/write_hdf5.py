@@ -13,16 +13,16 @@ from src.utils_data import read_gen
 
 
 class DatasetH5(Dataset):
-	def __init__(self, dataset_dict: Dict[List[str]]) -> None:
-		self.dataset_dict = dataset_dict
-		self.dataset_length = len(dataset_dict)
+	def __init__(self, dataset_list: List[str]) -> None:
+		self.dataset_list = dataset_list
+		self.dataset_length = len(dataset_list)
 
 	def __len__(self) -> int:
 		return self.dataset_length
 
 	def __getitem__(self, idx: int) -> Tuple[List[np.array], np.array]:
 		# Call via indexing
-		floname = self.dataset_dict[idx]
+		floname = self.dataset_list[idx]
 		imnames = [imname_modifier(floname, i+1) for i in range(2)]
 
 		# Instantiate the images and flow objects
@@ -77,13 +77,13 @@ def write_hdf5(dataset_dict: Dict[str, List[str]], filename: str) -> None:
 			file_shape = read_gen(value[0]).shape
 
 			# Image(s) placeholder
-			out.create_dataset(f"X1_{key}", (len(value), file_shape[0], file_shape[1], 3),
+			out.create_dataset(f"{key}/data1", (len(value), file_shape[0], file_shape[1], 3),
 							   dtype=h5py.h5t.STD_U8BE)
-			out.create_dataset(f"X2_{key}", (len(value), file_shape[0], file_shape[1], 3),
+			out.create_dataset(f"{key}/data2", (len(value), file_shape[0], file_shape[1], 3),
 							   dtype=h5py.h5t.STD_U8BE)
 
 			# Label placeholder
-			out.create_dataset(f"Y_{key}", (len(value), file_shape[0], file_shape[1], file_shape[2]),
+			out.create_dataset(f"{key}/label", (len(value), file_shape[0], file_shape[1], file_shape[2]),
 							   dtype=h5py.h5t.IEEE_F32BE)
 
 			# Instatiate dataloader
@@ -93,9 +93,9 @@ def write_hdf5(dataset_dict: Dict[str, List[str]], filename: str) -> None:
 	with h5py.File(filename, "a") as out:
 		for key, dataload in tqdm(dataloader.items(), ncols=100, desc='Iterate over DataLoader'):
 			for i, (images, flow) in enumerate(tqdm(dataload, ncols=100, desc=f"{key} dataset", unit="set")):
-				out[f"X1_{key}"][i] = images[0]
-				out[f"X2_{key}"][i] = images[1]
-				out[f"Y_{key}"][i] = flow
+				out[f"{key}/data1"][i] = images[0]
+				out[f"{key}/data2"][i] = images[1]
+				out[f"{key}/label"][i] = flow
 
 
 if __name__ == "__main__":
@@ -122,7 +122,7 @@ if __name__ == "__main__":
 	single_dataset = import_single_set("/home/faber/thesis/thesis_faber/images/demo/DNS_turbulence_flow.flo")
 
 	# Write to hdf5 file
-	# write_hdf5(raw_dataset, filepath)
+	write_hdf5(raw_dataset, filepath)
 	write_hdf5(single_dataset, singlepath)
 
 	tqdm.write('DONE!')
