@@ -39,7 +39,7 @@ class FromList(Dataset):
             flo = pickle.dumps(flo)
             images = [raw_reader(imname) for imname in imnames]
         else:
-            images = [Image.open(imname) for imname in imnames]
+            images = [np.array(Image.open(imname)) for imname in imnames]
 
         return images, flo, filename, fshape
 
@@ -85,6 +85,7 @@ def imname_modifier(floname: str, idx: int = 1) -> str:
 
 
 def write_hdf5(dataset_dict: Dict[str, List[str]], filename: str) -> None:
+    filename += '.h5'
     dataloader = {}
 
     # Define placeholder
@@ -92,29 +93,29 @@ def write_hdf5(dataset_dict: Dict[str, List[str]], filename: str) -> None:
         for key, value in dataset_dict.items():
             # Define the shape
             file_shape = read_gen(value[0]).shape
+            g = out.create_group(key)
 
             # Image(s) placeholder
-            out.create_dataset(f"{key}/data1", (len(value), file_shape[0], file_shape[1], 1), dtype=np.uint8)
-            out.create_dataset(f"{key}/data2", (len(value), file_shape[0], file_shape[1], 1), dtype=np.uint8)
+            g.create_dataset("data1", (len(value), file_shape[0], file_shape[1],), dtype=np.uint8)
+            g.create_dataset("data2", (len(value), file_shape[0], file_shape[1],), dtype=np.uint8)
 
             # Label placeholder
-            out.create_dataset(f"{key}/label", (len(value), file_shape[0], file_shape[1], file_shape[2]),
-                               dtype=np.float32)
-            out.close()
+            g.create_dataset("label", (len(value), file_shape[0], file_shape[1], file_shape[2],), dtype=np.float32)
 
             # Instatiate dataloader
             dataset = FromList(value)
-            dataloader[key] = DataLoader(dataset, shuffle=False, num_workers=16, collate_fn=lambda x: x)
+            dataloader[key] = DataLoader(dataset, shuffle=False, num_workers=8, collate_fn=lambda x: x)
+        out.close()
 
     # Define dataset variables
     with h5py.File(filename, "a") as out:
         for key, dataload in tqdm(dataloader.items(), ncols=100, desc='Iterate over DataLoader'):
-            for i, data in enumerate(tqdm(dataload, ncols=100, desc=f"{key} dataset", unit="set")):
+            for i, data in enumerate(tqdm(dataload, ncols=100, desc=f"{key.upper()} dataset", unit="set")):
                 images, flow, fname, fshape = data[0]
 
-                out[f"{key}/data1"][i] = np.array(images[0])
-                out[f"{key}/data2"][i] = np.array(images[1])
-                out[f"{key}/label"][i] = flow
+                out[key]["data1"][i] = images[0]
+                out[key]["data2"][i] = images[1]
+                out[key]["label"][i] = flow
         out.close()
 
 
