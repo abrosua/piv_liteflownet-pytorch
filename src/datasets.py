@@ -42,7 +42,7 @@ class PIVH5(Dataset):
         self.data_cache = {}
         self.data_cache_size = data_cache_size
 
-        dataset_list = sorted(glob(os.path.join(root, f'*_{self.set_type}.h5')))
+        dataset_list = sorted(glob(os.path.join(root, f'*.h5')))
 
         for h5dataset_fp in dataset_list:
             self._add_data_infos(str(h5dataset_fp), load_data)
@@ -50,7 +50,7 @@ class PIVH5(Dataset):
         self.size = len(self.get_data_infos('label'))
 
         if self.size > 0:
-            self.frame_size = self.data_info[0]['shape'][1:]
+            self.frame_size = list(self.data_info[0]['shape'])
 
             if (self.render_size[0] < 0) or (self.render_size[1] < 0) or \
                     (self.frame_size[0] % 64) or (self.frame_size[1] % 64):
@@ -62,19 +62,20 @@ class PIVH5(Dataset):
             self.frame_size = None
 
         # Sanity check on the number of image pair and flow
-        assert len(self.get_data_infos('data')) == len(self.get_data_infos('label'))
+        assert len(self.get_data_infos('data1')) \
+               == len(self.get_data_infos('data2')) \
+               == len(self.get_data_infos('label'))
+        print('DONE')
 
     def __len__(self) -> int:
         return self.size
 
     def __getitem__(self, index: int) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
         index = index % self.size
-        imget = self.get_data('data', index)
-        floget = self.get_data('label', index)
 
-        img1 = Image.fromarray(imget[0, ...]).convert('RGB')
-        img2 = Image.fromarray(imget[1, ...]).convert('RGB')
-        flow = floget[0, ...]
+        img1 = Image.fromarray(self.get_data('data1', index)).convert('RGB')
+        img2 = Image.fromarray(self.get_data('data2', index)).convert('RGB')
+        flow = self.get_data('label', index)
         data = [[img1, img2], [flow]]
 
         if self.is_cropped:
@@ -102,27 +103,32 @@ class PIVH5(Dataset):
 
     def _add_data_infos(self, file_path, load_data):
         with h5py.File(file_path) as h5_file:
-            # Walk through all groups, extracting datasets
-            for gname, group in h5_file.items():
-                for dname, ds in tqdm(group.items(), desc=f"Obtaining {gname}"):
+            # Walk through a specific groups, extracting datasets
+            group = h5_file[self.set_type]
+
+            for dname, dset in group.items():
+                for ds in dset[()]:
                     idx = -1  # if data is not loaded its cache index is -1
 
                     if load_data:
                         # add data to the data cache
-                        idx = self._add_to_cache(ds[()], file_path)
+                        idx = self._add_to_cache(ds, file_path)
 
                     self.data_info.append(
-                        {'file_path': file_path, 'type': dname, 'shape': ds[()].shape, 'cache_idx': idx})
+                        {'file_path': file_path, 'type': dname, 'shape': ds.shape, 'cache_idx': idx})
 
     def _load_data(self, file_path):
         """
         Load data to the cache given the file path and update the cache index in the data_info structure.
         """
         with h5py.File(file_path) as h5_file:
-            for gname, group in h5_file.items():
-                for dname, ds in group.items():
+            # Walk through a specific groups, extracting datasets
+            group = h5_file[self.set_type]
+
+            for dname, dset in group.items():
+                for ds in dset[()]:
                     # add data to the data cache and retrieve the cache index
-                    idx = self._add_to_cache(ds[()], file_path)
+                    idx = self._add_to_cache(ds, file_path)
 
                     # find the beginning index of the hdf5 file we are looking for
                     file_idx = next(i for i, v in enumerate(self.data_info) if v['file_path'] == file_path)
