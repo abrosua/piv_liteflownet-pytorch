@@ -4,8 +4,13 @@ import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
 from PIL import Image
+from tqdm import tqdm
+import lmdb
+import six
+import pyarrow as pa
 
 import json, h5py
+import pickle
 import os
 from glob import glob
 from typing import Optional, List, Tuple
@@ -37,15 +42,15 @@ class PIVH5(Dataset):
         self.data_cache = {}
         self.data_cache_size = data_cache_size
 
-        dataset_list = sorted(glob(os.path.join(root, f'*.h5')))
+        dataset_list = sorted(glob(os.path.join(root, f'*_{self.set_type}.h5')))
 
         for h5dataset_fp in dataset_list:
-            self._add_data_infos(str(h5dataset_fp.resolve()), load_data)
+            self._add_data_infos(str(h5dataset_fp), load_data)
 
         self.size = len(self.get_data_infos('label'))
 
         if self.size > 0:
-            self.frame_size = self.data_info[0]['shape']
+            self.frame_size = self.data_info[0]['shape'][1:]
 
             if (self.render_size[0] < 0) or (self.render_size[1] < 0) or \
                     (self.frame_size[0] % 64) or (self.frame_size[1] % 64):
@@ -57,19 +62,19 @@ class PIVH5(Dataset):
             self.frame_size = None
 
         # Sanity check on the number of image pair and flow
-        assert len(self.get_data_infos('data1')) \
-               == len(self.get_data_infos('data2')) \
-               == len(self.get_data_infos('label'))
+        assert len(self.get_data_infos('data')) == len(self.get_data_infos('label'))
 
     def __len__(self) -> int:
         return self.size
 
     def __getitem__(self, index: int) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
         index = index % self.size
+        imget = self.get_data('data', index)
+        floget = self.get_data('label', index)
 
-        img1 = Image.fromarray(self.get_data('data1', index))
-        img2 = Image.fromarray(self.get_data('data2', index))
-        flow = self.get_data('label', index)
+        img1 = Image.fromarray(imget[0, ...]).convert('RGB')
+        img2 = Image.fromarray(imget[1, ...]).convert('RGB')
+        flow = floget[0, ...]
         data = [[img1, img2], [flow]]
 
         if self.is_cropped:
@@ -99,15 +104,15 @@ class PIVH5(Dataset):
         with h5py.File(file_path) as h5_file:
             # Walk through all groups, extracting datasets
             for gname, group in h5_file.items():
-                for dname, ds in group.items():
+                for dname, ds in tqdm(group.items(), desc=f"Obtaining {gname}"):
                     idx = -1  # if data is not loaded its cache index is -1
 
                     if load_data:
                         # add data to the data cache
-                        idx = self._add_to_cache(ds.value, file_path)
+                        idx = self._add_to_cache(ds[()], file_path)
 
                     self.data_info.append(
-                        {'file_path': file_path, 'type': dname, 'shape': ds.value.shape, 'cache_idx': idx})
+                        {'file_path': file_path, 'type': dname, 'shape': ds[()].shape, 'cache_idx': idx})
 
     def _load_data(self, file_path):
         """
@@ -117,7 +122,7 @@ class PIVH5(Dataset):
             for gname, group in h5_file.items():
                 for dname, ds in group.items():
                     # add data to the data cache and retrieve the cache index
-                    idx = self._add_to_cache(ds.value, file_path)
+                    idx = self._add_to_cache(ds[()], file_path)
 
                     # find the beginning index of the hdf5 file we are looking for
                     file_idx = next(i for i, v in enumerate(self.data_info) if v['file_path'] == file_path)
@@ -154,15 +159,16 @@ class PIVH5(Dataset):
         return len(self.data_cache[file_path]) - 1
 
     def get_data_infos(self, type):
-        """Get data infos belonging to a certain type of data.
+        """
+        Get data infos belonging to a certain type of data.
         """
         data_info_type = [di for di in self.data_info if di['type'] == type]
         return data_info_type
 
     def get_data(self, type, i):
-        """Call this function anytime you want to access a chunk of data from the
-            dataset. This will make sure that the data is loaded in case it is
-            not part of the data cache.
+        """
+        Call this function anytime you want to access a chunk of data from the dataset.
+        This will make sure that the data is loaded in case it is not part of the data cache.
         """
         fp = self.get_data_infos(type)[i]['file_path']
         if fp not in self.data_cache:
@@ -185,28 +191,17 @@ class PIVLMDB(Dataset):
         self.replicates = replicates
         self.set_type = mode
 
-        exts = ['.jpg', '.jpeg', '.png', '.bmp', '.tif', '.ppm']
-        dataset_list = sorted(glob(os.path.join(root, f'*.lmdb')))
+        self.db_path = os.path.join(root, f"{mode}.lmdb")
+        self.env = lmdb.open(self.db_path, subdir=os.path.isdir(self.db_path),
+                             readonly=True, lock=False, readahead=False, meminit=False)
 
-        flow_list = []
-        image1_list, image2_list = [], []
-
-        for dataset_file in dataset_list:
-            file = h5py.File(dataset_file, "r+")
-            image1_list.append(np.array(file[f"/X1_{self.set_type}"]))
-            image2_list.append(np.array(file[f"/X2_{self.set_type}"]))
-            flow_list.append(np.array(file[f"/Y_{self.set_type}"]))
-
-        # Store the dataset
-        self.image1 = np.concatenate(image1_list)
-        self.image2 = np.concatenate(image2_list)
-        self.flow = np.concatenate(flow_list)
-
-        self.size = self.image1.shape[0]
+        with self.env.begin(write=False) as txn:
+            # self.length = txn.stat()['entries'] - 1
+            self.size = int(loads_pyarrow(txn.get(b'__len__')))
+            self.keys = list(loads_pyarrow(txn.get(b'__keys__')))
+            self.frame_size = list(loads_pyarrow(txn.get(b'__shape__')))
 
         if self.size > 0:
-            self.frame_size = self.image1[0, ...].shape[:-1]
-
             if (self.render_size[0] < 0) or (self.render_size[1] < 0) or \
                     (self.frame_size[0] % 64) or (self.frame_size[1] % 64):
                 self.render_size[0] = ((self.frame_size[0])//64) * 64
@@ -216,18 +211,25 @@ class PIVLMDB(Dataset):
         else:
             self.frame_size = None
 
-        # Sanity check on the number of image pair and flow
-        assert self.image1.shape[0] == self.flow.shape[0]
-
     def __len__(self) -> int:
         return self.size
 
     def __getitem__(self, index: int) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
+        """
+        Notes for IO object: Use each COUNTERPART method to read/write the object!
+        """
         index = index % self.size
 
-        img1 = Image.fromarray(self.image1[index, ...])
-        img2 = Image.fromarray(self.image2[index, ...])
-        flow = self.flow[index, ...]
+        # Init. buffer files
+        img1, img2, flow = None, None, None
+        env = self.env
+        with env.begin(write=False) as txn:
+            byteflow = txn.get(self.keys[index])
+        unpacked = list(loads_pyarrow(byteflow))
+
+        # Generate images
+        img1, img2 = self.get_data(unpacked[0]), self.get_data(unpacked[1])
+        flow = pickle.loads(unpacked[2])
         data = [[img1, img2], [flow]]
 
         if self.is_cropped:
@@ -252,6 +254,20 @@ class PIVLMDB(Dataset):
         res_data = tuple(transformer(*data))
         res_data = tuple(norm_aug(*res_data))
         return res_data
+
+    @staticmethod
+    def get_data(unpacked, imdata=True):
+        imgbuf = unpacked
+        buf = six.BytesIO()
+        buf.write(imgbuf)
+        buf.seek(0)
+
+        if imdata:
+            data = Image.open(buf).convert('RGB')
+        else:
+            data = np.load(buf, allow_pickle=True)
+
+        return data
 
 
 class PIVData(Dataset):
@@ -596,3 +612,11 @@ def txt_pickler(set_dir: str, replicate: int = 1) -> List[str]:
                     datanames.append(filename)
 
     return datanames
+
+
+def loads_pyarrow(buf):
+    """
+    Args:
+        buf: the output of `dumps`.
+    """
+    return pa.deserialize(buf)
