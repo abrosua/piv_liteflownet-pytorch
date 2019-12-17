@@ -227,7 +227,6 @@ class PIVLMDB(Dataset):
         index = index % self.size
 
         # Init. buffer files
-        img1, img2, flow = None, None, None
         env = self.env
         with env.begin(write=False) as txn:
             byteflow = txn.get(self.keys[index])
