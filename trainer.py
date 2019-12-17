@@ -227,8 +227,8 @@ if __name__ == '__main__':
         '--optimizer_lr', '4e-5',
         '--loss_startScale', '2', '--loss_l_weight', '0.001', '0.001', '0.001', '0.001', '0.01', '--loss_use_mean', 'false',
         '--lr_scheduler', 'MultiStepLR', '--lr_scheduler_milestones', '120', '240', '360', '480', '600', '--lr_scheduler_gamma', '0.5',
-        '--training_dataset_root', '../piv_datasets/cai2018/ztest_json',
-        '--validation_dataset_root', '../piv_datasets/cai2018/ztest_json',
+        '--training_dataset', 'PIVLMDB', '--training_dataset_root', '../piv_datasets/cai2018/ztest_lmdb/piv_cai2018',
+        '--validation_dataset', 'PIVLMDB', '--validation_dataset_root', '../piv_datasets/cai2018/ztest_lmdb/piv_cai2018',
         '--logger_disabled', 'true']
 
     # sys.argv = debug_input  # Uncomment for debugging
