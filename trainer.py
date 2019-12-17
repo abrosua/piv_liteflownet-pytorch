@@ -8,7 +8,7 @@ from torch.autograd import Variable
 # package utils
 import os, sys, re
 import argparse
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 import setproctitle, colorama
 
 # src
