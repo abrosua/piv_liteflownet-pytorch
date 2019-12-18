@@ -135,9 +135,10 @@ class MultiScale(nn.Module):
 					lossvalue += self.loss_weights[i] * self.loss(output_, target_)
 
 				else:
+					target__ = target if len(output_) == 1 else target_
 					for out_ in output_:
-						epevalue += self.loss_weights[i] * EPE(out_, target_, mean=self.use_mean)
-						lossvalue += self.loss_weights[i] * self.loss(out_, target_)
+						epevalue += self.loss_weights[i] * EPE(out_, target__, mean=self.use_mean)
+						lossvalue += self.loss_weights[i] * self.loss(out_, target__)
 
 			return [lossvalue, epevalue]
 

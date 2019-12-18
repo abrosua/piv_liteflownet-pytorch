@@ -225,7 +225,7 @@ if __name__ == '__main__':
         '--name', 'train_trial',
         '--model', 'LiteFlowNet2', '--model_starting_scale', '10', '--model_lowest_level', '2',
         '--optimizer_lr', '4e-5',
-        '--loss_startScale', '2', '--loss_l_weight', '0.001', '0.001', '0.001', '0.001', '0.01', '--loss_use_mean', 'false',
+        '--loss_startScale', '2', '--loss_l_weight', '0.001', '0.001', '0.001', '0.001', '0.01', '6.25e-4', '--loss_use_mean', 'false',
         '--lr_scheduler', 'MultiStepLR', '--lr_scheduler_milestones', '120', '240', '360', '480', '600', '--lr_scheduler_gamma', '0.5',
         '--training_dataset', 'PIVLMDB', '--training_dataset_root', '../piv_datasets/cai2018/ztest_lmdb/piv_cai2018',
         '--validation_dataset', 'PIVLMDB', '--validation_dataset_root', '../piv_datasets/cai2018/ztest_lmdb/piv_cai2018',
@@ -391,11 +391,24 @@ if __name__ == '__main__':
 
     ## Dynamically load the optimizer with parameters passed in via "--optimizer_[param]=[value]" arguments
     with utils.TimerBlock("Initializing {} Optimizer".format(args.optimizer)) as block:
+        level2use = list(range(args.model_lowest_level, 6+1))
+        def_id = [i for i, level in enumerate(level2use) if level < 4]
+
         kwargs = utils.kwargs_from_args(args, 'optimizer')
         param_group = [
-            {'params': [p for n, p in model_and_loss.named_parameters() if p.requires_grad and n.endswith(".weight")],
+            {'params': [p for n, p in model_and_loss.named_parameters() if p.requires_grad and n.endswith(".weight")
+                        and ("NetE" in n.split('.')[0] and int(n.split('.')[1]) in def_id)],
+             'weight_decay': args.weight_decay,
+             'lr': 6e-5},
+            {'params': [p for n, p in model_and_loss.named_parameters() if p.requires_grad and n.endswith(".weight")
+                        and not ("NetE" in n.split('.')[0] and int(n.split('.')[1]) in def_id)],
              'weight_decay': args.weight_decay},
-            {'params': [p for n, p in model_and_loss.named_parameters() if p.requires_grad and n.endswith(".bias")],
+            {'params': [p for n, p in model_and_loss.named_parameters() if p.requires_grad and n.endswith(".bias")
+                        and ("NetE" in n.split('.')[0] and int(n.split('.')[1]) in def_id)],
+             'weight_decay': args.bias_decay,
+             'lr': 6e-5},
+            {'params': [p for n, p in model_and_loss.named_parameters() if p.requires_grad and n.endswith(".bias")
+                        and not ("NetE" in n.split('.')[0] and int(n.split('.')[1]) in def_id)],
              'weight_decay': args.bias_decay}
         ]
         optimizer = args.optimizer_class(param_group, **kwargs)

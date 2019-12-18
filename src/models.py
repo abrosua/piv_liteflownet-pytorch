@@ -304,7 +304,7 @@ class LiteFlowNet(torch.nn.Module):
 		self.NetE_R = torch.nn.ModuleList([
 			Regularization(pyr_level, self.SCALEFACTOR[pyr_level]) for pyr_level in self.level2use])  # NetE - R
 
-	def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> Union[torch.Tensor, List[torch.Tensor]]:
+	def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> Union[torch.Tensor, List[List[torch.Tensor]]]:
 		"""
 		Mean normalization augmentation is excluded from the model definition!
 		The norm are added either during the Datasets definition (for DataLoader parsing)
@@ -634,12 +634,15 @@ class LiteFlowNet2(torch.nn.Module):
 		self.NetE_R = torch.nn.ModuleList([
 			Regularization(pyr_level, self.SCALEFACTOR[pyr_level]) for pyr_level in self.level2use])  # NetE - R
 
-	def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> Union[torch.Tensor, List[torch.Tensor]]:
+	def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> Union[torch.Tensor, List[List[torch.Tensor]]]:
 		"""
 		Mean normalization augmentation is excluded from the model definition!
 		The norm are added either during the Datasets definition (for DataLoader parsing)
 			or during the inference parsing pipeline.
 		"""
+		# Init.
+		im_shape = (img1.size(2), img1.size(3))
+
 		feat1 = self.NetC(img1)
 		feat2 = self.NetC(img2)
 
@@ -681,7 +684,9 @@ class LiteFlowNet2(torch.nn.Module):
 			xflow_train.append([xflow_M, xflow_S, xflow])
 
 		if self.training:  # training mode
-			# return [xf_factor * (self.SCALEFACTOR[1]) for xf_factor in xflow_train]
+			xflow_upsampled = torch.nn.functional.interpolate(input=xflow, size=im_shape, mode='bilinear',
+															  align_corners=False)
+			xflow_train.append([xflow_upsampled])
 			return xflow_train
 
 		else:  # evaluation mode
