@@ -106,11 +106,14 @@ class MultiScale(nn.Module):
 
 		self.use_mean = use_mean
 		self.startScale = startScale
-		self.numScales = len(l_weight)
+		self.numScales = 7 - startScale
 
 		self.div_flow = div_scale
 		self.multiScales = [nn.AvgPool2d(self.startScale * (2 ** scale), self.startScale * (2 ** scale))
 							for scale in reversed(range(self.numScales))]
+
+		for i in range(abs(len(self.loss_weights) - len(self.multiScales))):
+			self.multiScales.append(nn.AvgPool2d(1, 1))
 
 		if norm == 'L1':
 			self.loss = L1(mean=self.use_mean)
@@ -124,7 +127,7 @@ class MultiScale(nn.Module):
 		lossvalue, epevalue = 0.0, 0.0
 
 		if type(output) in [tuple, list]:  # For TRAINING mode/error
-			assert self.numScales == len(output)  # Check the number of pyramid level used
+			assert len(self.loss_weights) == len(output)  # Check the number of pyramid level used
 			target = self.div_flow * target
 
 			for i, output_ in enumerate(output):
@@ -135,10 +138,9 @@ class MultiScale(nn.Module):
 					lossvalue += self.loss_weights[i] * self.loss(output_, target_)
 
 				else:
-					target__ = target if len(output_) == 1 else target_
 					for out_ in output_:
-						epevalue += self.loss_weights[i] * EPE(out_, target__, mean=self.use_mean)
-						lossvalue += self.loss_weights[i] * self.loss(out_, target__)
+						epevalue += self.loss_weights[i] * EPE(out_, target_, mean=self.use_mean)
+						lossvalue += self.loss_weights[i] * self.loss(out_, target_)
 
 			return [lossvalue, epevalue]
 

@@ -231,7 +231,7 @@ if __name__ == '__main__':
         '--validation_dataset', 'PIVLMDB', '--validation_dataset_root', '../piv_datasets/cai2018/ztest_lmdb/piv_cai2018',
         '--logger_disabled', 'true']
 
-    # sys.argv = debug_input  # Uncomment for debugging
+    sys.argv = debug_input  # Uncomment for debugging
 
     # ------------------------------ PARSING THE INPUT ------------------------------
     # Parse the official arguments
@@ -397,18 +397,18 @@ if __name__ == '__main__':
         kwargs = utils.kwargs_from_args(args, 'optimizer')
         param_group = [
             {'params': [p for n, p in model_and_loss.named_parameters() if p.requires_grad and n.endswith(".weight")
-                        and ("NetE" in n.split('.')[0] and int(n.split('.')[1]) in def_id)],
+                        and ("NetE" in n.split('.')[2] and int(n.split('.')[3]) in def_id)],
              'weight_decay': args.weight_decay,
              'lr': 6e-5},
             {'params': [p for n, p in model_and_loss.named_parameters() if p.requires_grad and n.endswith(".weight")
-                        and not ("NetE" in n.split('.')[0] and int(n.split('.')[1]) in def_id)],
+                        and not ("NetE" in n.split('.')[2] and int(n.split('.')[3]) in def_id)],
              'weight_decay': args.weight_decay},
             {'params': [p for n, p in model_and_loss.named_parameters() if p.requires_grad and n.endswith(".bias")
-                        and ("NetE" in n.split('.')[0] and int(n.split('.')[1]) in def_id)],
+                        and ("NetE" in n.split('.')[2] and int(n.split('.')[3]) in def_id)],
              'weight_decay': args.bias_decay,
              'lr': 6e-5},
             {'params': [p for n, p in model_and_loss.named_parameters() if p.requires_grad and n.endswith(".bias")
-                        and not ("NetE" in n.split('.')[0] and int(n.split('.')[1]) in def_id)],
+                        and not ("NetE" in n.split('.')[2] and int(n.split('.')[3]) in def_id)],
              'weight_decay': args.bias_decay}
         ]
         optimizer = args.optimizer_class(param_group, **kwargs)
