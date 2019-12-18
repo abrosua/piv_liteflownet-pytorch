@@ -112,9 +112,6 @@ class MultiScale(nn.Module):
 		self.multiScales = [nn.AvgPool2d(self.startScale * (2 ** scale), self.startScale * (2 ** scale))
 							for scale in reversed(range(self.numScales))]
 
-		for i in range(abs(len(self.loss_weights) - len(self.multiScales))):
-			self.multiScales.append(nn.AvgPool2d(1, 1))
-
 		if norm == 'L1':
 			self.loss = L1(mean=self.use_mean)
 		elif norm == 'L2':
@@ -131,7 +128,7 @@ class MultiScale(nn.Module):
 			target = self.div_flow * target
 
 			for i, output_ in enumerate(output):
-				target_ = self.multiScales[i](target)
+				target_ = self.multiScales[i](target) if i < self.numScales else target
 
 				if type(output_) not in [tuple, list]:
 					epevalue += self.loss_weights[i] * EPE(output_, target_, mean=self.use_mean)
