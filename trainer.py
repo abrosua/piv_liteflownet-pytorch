@@ -231,7 +231,7 @@ if __name__ == '__main__':
         '--validation_dataset', 'PIVLMDB', '--validation_dataset_root', '../piv_datasets/cai2018/ztest_lmdb/piv_cai2018',
         '--logger_disabled', 'true']
 
-    sys.argv = debug_input  # Uncomment for debugging
+    # sys.argv = debug_input  # Uncomment for debugging
 
     # ------------------------------ PARSING THE INPUT ------------------------------
     # Parse the official arguments
