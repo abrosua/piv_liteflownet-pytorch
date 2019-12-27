@@ -140,6 +140,7 @@ def write_flow(flow: np.ndarray, filename: str, norm: bool = False):
     else:
         u = flow[:, :, 0]
         v = flow[:, :, 1]
+        w = flow[:, :, 2] if flow.shape[2] > 2 else None
 
     assert u.shape == v.shape, "Invalid flow shape"
     height, width = u.shape

@@ -380,13 +380,13 @@ class InferenceRun(Dataset):
             file_list = image_files_from_folder(root, pair=pair)
         prev_file = None
 
-        self.image_list = []
+        self.image_list, self.name_list = [], []
         for file in file_list:
             if 'test' in file:
                 continue
 
             if pair:  # Using paired images
-                imbase, imext = os.path.splitext(os.path.basename(file))
+                imbase, imext = os.path.splitext(os.path.basename(str(file)))
                 fbase = imbase.rsplit('_', 1)[0]
 
                 img1 = file
@@ -399,11 +399,14 @@ class InferenceRun(Dataset):
                 else:
                     img1, img2 = prev_file, file
                     prev_file = file
+                    fbase = os.path.basename(str(img1))
+                    fbase = fbase.rsplit('_', 1)[0] if use_stereo else fbase
 
             if not os.path.isfile(img1) or not os.path.isfile(img2):
                 continue
 
             self.image_list += [[img1, img2]]
+            self.name_list += [fbase]
 
         self.size = len(self.image_list)
 
@@ -424,7 +427,7 @@ class InferenceRun(Dataset):
     def __getitem__(self, index: int) -> Tuple[List[torch.Tensor], str]:
         # Init.
         index = index % self.size
-        im_name = self.image_list[index][0]
+        im_name = self.name_list[index]
 
         # Cropper and totensor tranformer for the images
         transformer = transforms.Compose([
