@@ -369,9 +369,15 @@ class PIVData(Dataset):
 
 
 class InferenceRun(Dataset):
-    def __init__(self, inference_size: Tuple = (-1, -1), root: str = '', pair: bool = True) -> None:
+    def __init__(self, inference_size: Tuple = (-1, -1), root: str = '', pair: bool = True, use_stereo: bool = False
+                 ) -> None:
         self.render_size = list(inference_size)
-        file_list = image_files_from_folder(root, pair=pair)
+        if use_stereo:
+            file_list = [image_files_from_folder(x[0], pair=pair) for x in os.walk(root)
+                         if os.path.basename(x[0]) != os.path.basename(root)]
+            assert len(file_list[0]) == len(file_list[1])
+        else:
+            file_list = image_files_from_folder(root, pair=pair)
         prev_file = None
 
         self.image_list = []
