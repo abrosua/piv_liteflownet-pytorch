@@ -1,21 +1,26 @@
 import numpy as np
 from tqdm import tqdm
+import torch
+from torch.utils.data import DataLoader
 
 import os, sys
 import argparse
 from glob import glob
+from typing import List
 import json
 
 from stereo.dewarp import nl_trans
 from stereo.vel3d import willert
-from inference import Inference
+from inference import Inference, estimate
 from src.utils_plot import read_flow, write_flow
+from src.models import piv_liteflownet
+from src.datasets import InferenceRun
 
 
 # ------------------ CLI ------------------
 parser = argparse.ArgumentParser(description='Stereoscopic PIV image processing')
 parser.add_argument('--coeff', '-c', type=str, help='mapping coefficient json file path.')
-parser.add_argument('--root', '-r', default='./images/demo', type=str, help='root directory for series of images')
+parser.add_argument('--root', '-r', default=None, type=str, help='root directory for series of images')
 parser.add_argument('--save', '-s', default='./work', type=str, help='directory for saving')
 
 parser.add_argument('--theta', default=[45.0, 45.0], type=float, nargs='+', help='object plane angle')
@@ -24,6 +29,13 @@ parser.add_argument('--alpha', default=[0.0, 0.0], type=float, nargs='+',
 parser.add_argument('--window-size', '-ws', default=[1.0, 1.0], type=float, nargs='+',
                     help="Window size in the real length")
 parser.add_argument('--fps', default=60, type=int, help="camera frame rate (FPS)")
+
+parser.add_argument('--model', default="./models/pretrain_torch/PIV-LiteFlowNet-en.paramOnly", type=str,
+                    help="model weight parameters to use")
+parser.add_argument('--model_version', default=1, type=int, choices=[1, 2],
+                    help="choose which base model version to use, LiteFlowNet or LiteFlowNet2")
+parser.add_argument('--inference_mode', default='manual', type=str, choices=['manual', 'direct'],
+                    help="choose which inference method to use")
 
 main_dir = os.path.dirname(os.path.realpath(__file__))
 os.chdir(main_dir)
@@ -45,14 +57,30 @@ def read_coeff(path: str):
     return coeffdict
 
 def direct_process(args, net, device: str = 'cpu'):
-    pass
+    # Init.
+    coeffdict = read_coeff(args.coeff)
+    beta = [a for a in args.alpha]
+
+    # Instantiate dataloader
+    stereo_dataset = InferenceRun(root=args.root, pair=False, use_stereo=True)
+    stereo_dataloader = DataLoader(stereo_dataset, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
+
+    # Processing dataloader
+    for images, img_name in tqdm(stereo_dataloader, ncols=100, leave=True, unit='pair', desc=f'Evaluating {args.root}'):
+        images = [image.to(device) for image in images]  # Add to device
+
+        flow_cal = [_stereo_cal(estimate(net, images[i], images[i+1], tensor=False),
+                                coeffdict[naming.capitalize()],
+                                args.window_size, 1 / args.fps, True)
+                    for i, naming in enumerate(['left', 'right'])]
+
+        stereo_flow = willert(flow_cal, args.theta, beta)
+        write_flow(stereo_flow, os.path.join(args.save, "stereo", flobase))
 
 
 def manual_process(args, net, device: str = 'cpu'):
     # Instatiate inferencing object
     infer = Inference(net, output_dir=args.save, device=device)
-    coeffdict = read_coeff(args.coeff)
-    beta = [a for a in args.alpha]
 
     # Performing PIV for left and right images
     stereo_inputs = [x[0] for x in os.walk(args.root)
@@ -61,7 +89,15 @@ def manual_process(args, net, device: str = 'cpu'):
         infer.dataloader_parsing(path, pair=False, write=True)
 
     # Iterate for calculating stereo results
+    _flo_process(args)
+
+
+def _flo_process(args):
+    # Init.
+    coeffdict = read_coeff(args.coeff)
+    beta = [a for a in args.alpha]
     naming = ['left', 'right']
+
     left_flos = sorted(glob(os.path.join(args.save, os.path.join(f"*{naming[0]}*", "*.flo"))))
     right_dir = glob(os.path.join(args.save, f"*{naming[1]}*"))[0]
 
@@ -71,11 +107,23 @@ def manual_process(args, net, device: str = 'cpu'):
         right_flo = os.path.join(right_dir, flobase)
 
         # Generate the flow array
-        flow = [read_flow(left_flo), read_flow(right_flo)]
-        cal_flow = [np.dstack(nl_trans(flo[:, :, 0], flo[:, :, 1], coeffdict[naming[i].capitalize()]))
-                    for i, flo in enumerate(flow)]
-        stereo_flow = willert(cal_flow, args.theta, beta)
+        flow_cal = [_stereo_cal(read_flow(floname),
+                                coeffdict[naming[i].capitalize()],
+                                args.window_size, 1 / args.fps, True)
+                    for i, floname in enumerate([left_flo, right_flo])]
+        stereo_flow = willert(flow_cal, args.theta, beta)
         write_flow(stereo_flow, os.path.join(args.save, "stereo", flobase))
+
+
+def _stereo_cal(flow, A, window_size: List[float], time_frame: float, calibrate: bool = False):
+    # Real calibration
+    length_cal = np.array(window_size) / np.array(flow.shape)  # meters
+
+    if calibrate:
+        flow = flow * length_cal * time_frame  # meters / second
+
+    flow_cal = nl_trans(flow[:, :, 0], flow[:, :, 1], A)
+    return np.dstack(flow_cal)
 
 
 if __name__ == "__main__":
@@ -89,20 +137,18 @@ if __name__ == "__main__":
 
     # -------------------- INPUT Init. --------------------
     args = parser.parse_args()
-    coeffdict = read_coeff(args.coeff)
-    assert os.path.isdir()
-
-    # Init. variable
-    time_frame = 1 / args.fps  # second
 
     # START here
-    for key, coeff in coeffdict.items():
+    if args.root is None:
+        _flo_process(args)
+    else:
+        # Init.
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        if os.path.isfile(args.model):
+            params = torch.load(args.model)
+        else:
+            raise ValueError(f'Unknown model params input ({args.model})!')
+        net = piv_liteflownet(params, args.model_version).to(device)
 
-        # PIV processing
-
-        # Real length calibration
-        length_cal = np.array(args.window_size) / np.array(flow.shape)
-        flow_cal = [flow[:, :, i] * len_cal for i, len_cal in enumerate(length_cal.tolist())]
-
-        # Stereo calibration
-        calibrate_flow = nl_trans(flow_cal[0], flow_cal[1], coeff)
+        assert os.path.isdir(args.root)
+        manual_process(args, net, device) if args.inference_mode is "manual" else direct_process(args, net, device)

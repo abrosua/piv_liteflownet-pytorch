@@ -381,37 +381,46 @@ class InferenceRun(Dataset):
         prev_file = None
 
         self.image_list, self.name_list = [], []
-        for file in file_list:
-            if 'test' in file:
-                continue
+        for files in file_list:
+            tmp_image_list, tmp_name_list = [], []
 
-            if pair:  # Using paired images
-                imbase, imext = os.path.splitext(os.path.basename(str(file)))
-                fbase = imbase.rsplit('_', 1)[0]
-
-                img1 = file
-                img2 = os.path.join(root, str(fbase) + '_img2' + imext)
-
-            else:  # Using sequential images
-                if prev_file is None:
-                    prev_file = file
+            for file in files:
+                if 'test' in file:
                     continue
-                else:
-                    img1, img2 = prev_file, file
-                    prev_file = file
-                    fbase = os.path.basename(str(img1))
-                    fbase = fbase.rsplit('_', 1)[0] if use_stereo else fbase
 
-            if not os.path.isfile(img1) or not os.path.isfile(img2):
-                continue
+                if pair:  # Using paired images
+                    imbase, imext = os.path.splitext(os.path.basename(str(file)))
+                    fbase = imbase.rsplit('_', 1)[0]
 
-            self.image_list += [[img1, img2]]
-            self.name_list += [fbase]
+                    img1 = file
+                    img2 = os.path.join(root, str(fbase) + '_img2' + imext)
 
-        self.size = len(self.image_list)
+                else:  # Using sequential images
+                    if prev_file is None:
+                        prev_file = file
+                        continue
+                    else:
+                        img1, img2 = prev_file, file
+                        prev_file = file
+                        fbase = os.path.basename(str(img1))
+                        fbase = fbase.rsplit('_', 1)[0] if use_stereo else fbase
+
+                if not os.path.isfile(img1) or not os.path.isfile(img2):
+                    continue
+
+                tmp_image_list += [[img1, img2]]
+                tmp_name_list += [fbase]
+
+            self.image_list.append(tmp_image_list)
+            self.name_list.append(tmp_name_list)
+
+        assert len(self.image_list[0]) == len(self.image_list[1]) and \
+               len(self.name_list[0]) == len(self.name_list[1])
+        self.size = len(self.image_list[0])
 
         if self.size > 0:
-            self.frame_size = read_gen(self.image_list[0][0]).size
+            img_tmp = self.image_list[0][0][0]
+            self.frame_size = read_gen(img_tmp).size
 
             if (self.render_size[0] < 0) or (self.render_size[1] < 0) or \
                     (self.frame_size[0] % 64) or (self.frame_size[1] % 64):
@@ -424,10 +433,10 @@ class InferenceRun(Dataset):
     def __len__(self) -> int:
         return self.size
 
-    def __getitem__(self, index: int) -> Tuple[List[torch.Tensor], str]:
+    def __getitem__(self, index: int) -> Tuple[List[torch.Tensor], List[str]]:
         # Init.
         index = index % self.size
-        im_name = self.name_list[index]
+        im_name = [name_list[index] for name_list in self.name_list]
 
         # Cropper and totensor tranformer for the images
         transformer = transforms.Compose([
@@ -440,8 +449,9 @@ class InferenceRun(Dataset):
 
         # Read and transform file into tensor
         imgs = []
-        for i, imname in enumerate(self.image_list[index]):
-            imgs.append(norm_aug[i](transformer(read_gen(imname))))
+        for im_list in self.image_list:
+            for i, imname in enumerate(im_list[index]):
+                imgs.append(norm_aug[i](transformer(read_gen(imname))))
 
         return imgs, im_name
 

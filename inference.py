@@ -196,7 +196,7 @@ class Inference:
 
 			# Add to device
 			images[0], images[1] = images[0].to(self.device), images[1].to(self.device)
-			out_flow = estimate(net, images[0], images[1], tensor=True)
+			out_flow = estimate(net, images[0], images[1], tensor=False)
 
 			# Post-processing here
 			out_name = flowname_modifier(img_name[0], outdir, pair=pair)
