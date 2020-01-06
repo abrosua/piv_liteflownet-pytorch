@@ -13,14 +13,12 @@ def willert(flow, theta, beta):
 	Returns:
 		U, V, W	: 2D3C velocity array
 	"""
-
-	# Init.
+	# Init. variable
 	u, v = [flo[:, :, 0] for flo in flow], [flo[:, :, 1] for flo in flow]
-	flow3c = np.zeros([*u[0].shape, 3])
 
-	flow3c[:, :, 0] = (u[1] * np.tan(theta[0]) - u[0] * np.tan(theta[1])) / (np.tan(theta[0]) - np.tan(theta[1]))
-	flow3c[:, :, 1] = (v[0] + v[1]) / 2 + (u[1] - u[0]) * (np.tan(beta[1]) - np.tan(beta[0])) / (
+	u_3c = (u[1] * np.tan(theta[0]) - u[0] * np.tan(theta[1])) / (np.tan(theta[0]) - np.tan(theta[1]))
+	v_3c = (v[0] + v[1]) / 2 + (u[1] - u[0]) * (np.tan(beta[1]) - np.tan(beta[0])) / (
 			np.tan(theta[0]) - np.tan(theta[1])) / 2
-	flow3c[:, :, 2] = (u[1] - u[0]) / (np.tan(theta[0]) - np.tan(theta[1]))
+	w_3c = (u[1] - u[0]) / (np.tan(theta[0]) - np.tan(theta[1]))
 
-	return flow3c
+	return np.dstack([u_3c, v_3c, w_3c])
