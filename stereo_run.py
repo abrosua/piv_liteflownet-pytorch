@@ -66,16 +66,18 @@ def direct_process(args, net, device: str = 'cpu'):
     stereo_dataloader = DataLoader(stereo_dataset, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
 
     # Processing dataloader
-    for images, img_name in tqdm(stereo_dataloader, ncols=100, leave=True, unit='pair', desc=f'Evaluating {args.root}'):
+    for images, floname in tqdm(stereo_dataloader, ncols=100, leave=True, unit='pair', desc=f'Evaluating {args.root}'):
         images = [image.to(device) for image in images]  # Add to device
 
         flow_cal = [_stereo_cal(estimate(net, images[i], images[i+1], tensor=False),
                                 coeffdict[naming.capitalize()],
                                 args.window_size, 1 / args.fps, True)
-                    for i, naming in enumerate(['left', 'right'])]
-
+                    for i, naming in enumerate(['left', 'right'])
+                    ]
         stereo_flow = willert(flow_cal, args.theta, beta)
-        write_flow(stereo_flow, os.path.join(args.save, "stereo", flobase))
+
+        flosave = str(floname[0]) + '_2d3c.flo'
+        write_flow(stereo_flow, os.path.join(args.save, "stereo", flosave))
 
 
 def manual_process(args, net, device: str = 'cpu'):
@@ -110,9 +112,12 @@ def _flo_process(args):
         flow_cal = [_stereo_cal(read_flow(floname),
                                 coeffdict[naming[i].capitalize()],
                                 args.window_size, 1 / args.fps, True)
-                    for i, floname in enumerate([left_flo, right_flo])]
+                    for i, floname in enumerate([left_flo, right_flo])
+                    ]
         stereo_flow = willert(flow_cal, args.theta, beta)
-        write_flow(stereo_flow, os.path.join(args.save, "stereo", flobase))
+
+        flosave = str(flobase.rsplit('_', 1)[0]) + '_2d3c.flo'
+        write_flow(stereo_flow, os.path.join(args.save, "stereo", flosave))
 
 
 def _stereo_cal(flow, A, window_size: List[float], time_frame: float, calibrate: bool = False):
