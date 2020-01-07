@@ -27,12 +27,6 @@ args_output = './out.flo'
 
 ##########################################################
 
-# Mean augmentation global variable
-MEAN = ((0.194286, 0.190633, 0.191766), (0.194220, 0.190595, 0.191701))  # PIV-LiteFlowNet2-en (Silitonga, 2020)
-# MEAN = ((0.173935, 0.180594, 0.192608), (0.172978, 0.179518, 0.191300))  # PIV-LiteFlowNet-en (Cai, 2019)
-# MEAN = ((0.411618, 0.434631, 0.454253), (0.410782, 0.433645, 0.452793))  # LiteFlowNet (Hui, 2018)
-
-
 def estimate(net: torch.nn.Module, img1: torch.Tensor, img2: torch.Tensor, tensor: bool = False):
 	# Ensure that both the first and second images have the same dimension!
 	assert (img1.size(2) == img2.size(2))
@@ -209,16 +203,8 @@ class Inference:
 	def parser(net, im1, im2, device='cpu'):
 		assert im1.size == im2.size
 
-		# Tensor transformer
-		transformer = [
-			transforms.Compose([
-				transforms.ToTensor(),
-				transforms.Normalize(mean_idx, (1.0, 1.0, 1.0))
-			])
-			for mean_idx in MEAN]
-
-		tensor_im1 = transformer[0](im1).to(device)
-		tensor_im2 = transformer[1](im2).to(device)
+		tensor_im1 = transforms.ToTensor()(im1).to(device)
+		tensor_im2 = transforms.ToTensor()(im2).to(device)
 
 		C, H, W = tensor_im1.size()
 		tensor_im1 = tensor_im1.view(1, C, H, W)

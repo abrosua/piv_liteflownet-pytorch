@@ -19,12 +19,6 @@ from src.utils_data import image_files_from_folder, flo_files_from_folder, read_
 import src.flow_transforms as f_transforms
 
 
-# Mean augmentation global variable
-MEAN = ((0.194286, 0.190633, 0.191766), (0.194220, 0.190595, 0.191701))  # PIV-LiteFlowNet2-en (Silitonga, 2020)
-# MEAN = ((0.173935, 0.180594, 0.192608), (0.172978, 0.179518, 0.191300))  # PIV-LiteFlowNet-en (Cai, 2019)
-# MEAN = ((0.411618, 0.434631, 0.454253), (0.410782, 0.433645, 0.452793))  # LiteFlowNet (Hui, 2018)
-
-
 class PIVH5(Dataset):
     def __init__(self, args, is_cropped: bool = False, root: str = '', replicates: int = 1, mode: str = 'train',
                  transform: Optional[object] = None, load_data: bool = False, data_cache_size: int = 3) -> None:
@@ -94,11 +88,7 @@ class PIVH5(Dataset):
         else:
             transformer = self.transform
 
-        # Instantiate norm augmentation
-        norm_aug = f_transforms.Normalize(mean=MEAN)
-
         res_data = tuple(transformer(*data))
-        res_data = tuple(norm_aug(*res_data))
         return res_data
 
     def _add_data_infos(self, file_path, load_data):
@@ -253,11 +243,7 @@ class PIVLMDB(Dataset):
         else:
             transformer = self.transform
 
-        # Instantiate norm augmentation
-        norm_aug = f_transforms.Normalize(mean=MEAN)
-
         res_data = tuple(transformer(*data))
-        res_data = tuple(norm_aug(*res_data))
         return res_data
 
     @staticmethod
@@ -360,11 +346,7 @@ class PIVData(Dataset):
         else:
             transformer = self.transform
 
-        # Instantiate norm augmentation
-        norm_aug = f_transforms.Normalize(mean=MEAN)
-
         res_data = tuple(transformer(*data))
-        res_data = tuple(norm_aug(*res_data))
         return res_data
 
 
@@ -402,7 +384,7 @@ class InferenceRun(Dataset):
                     else:
                         img1, img2 = prev_file, file
                         prev_file = file
-                        fbase = os.path.basename(str(img1))
+                        fbase = os.path.splitext(os.path.basename(str(img1)))[0]
                         fbase = fbase.rsplit('_', 1)[0] if use_stereo else fbase
 
                 if not os.path.isfile(img1) or not os.path.isfile(img2):
@@ -444,14 +426,11 @@ class InferenceRun(Dataset):
             transforms.ToTensor(),
         ])
 
-        # Mean augmentation
-        norm_aug = [transforms.Normalize(mean_idx, (1.0, 1.0, 1.0)) for mean_idx in MEAN]
-
         # Read and transform file into tensor
         imgs = []
         for im_list in self.image_list:
             for i, imname in enumerate(im_list[index]):
-                imgs.append(norm_aug[i](transformer(read_gen(imname))))
+                imgs.append(transformer(read_gen(imname)))
 
         return imgs, im_name
 
@@ -526,7 +505,6 @@ class InferenceEval(Dataset):
         transformer = f_transforms.Compose([
             f_transforms.Crop(self.render_size, crop_type='center'),
             f_transforms.ModToTensor(),
-            f_transforms.Normalize(mean=MEAN)
         ])
 
         res_data = tuple(transformer(*data))
