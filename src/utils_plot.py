@@ -176,6 +176,7 @@ def quiver_plot(flow: np.ndarray, coord: Optional[np.ndarray] = None, filename: 
 
     # ploting the result
     plt.quiver(xp, yp, u, v)
+    plt.axis('equal')
     if show:
         plt.show()
     if filename is not None:
