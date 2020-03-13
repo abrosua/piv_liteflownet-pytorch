@@ -16,8 +16,8 @@ __all__ = ['hui_liteflownet', 'piv_liteflownet']  # For inference purpose
 
 # Mean augmentation global variable
 # MEAN = ((0.194286, 0.190633, 0.191766), (0.194220, 0.190595, 0.191701))  # PIV-LiteFlowNet2-en (Silitonga, 2020)
-MEAN = ((0.173935, 0.180594, 0.192608), (0.172978, 0.179518, 0.191300))  # PIV-LiteFlowNet-en (Cai, 2019)
-# MEAN = ((0.411618, 0.434631, 0.454253), (0.410782, 0.433645, 0.452793))  # LiteFlowNet (Hui, 2018)
+# MEAN = ((0.173935, 0.180594, 0.192608), (0.172978, 0.179518, 0.191300))  # PIV-LiteFlowNet-en (Cai, 2019)
+MEAN = ((0.411618, 0.434631, 0.454253), (0.410782, 0.433645, 0.452793))  # LiteFlowNet (Hui, 2018)
 
 Backward_tensorGrid = {}
 
