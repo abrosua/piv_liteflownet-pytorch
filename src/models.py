@@ -37,7 +37,7 @@ def Backward(tensorInput, tensorFlow):
 	return torch.nn.functional.grid_sample(input=tensorInput,
 										   grid=(Backward_tensorGrid[str(tensorFlow.size())] +
 												 tensorFlow).permute(0, 2, 3, 1),
-										   mode='bilinear', padding_mode='zeros')
+										   mode='bilinear', padding_mode='zeros', align_corners=True)
 
 
 # ----------- NETWORK DEFINITION -----------
