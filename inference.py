@@ -20,7 +20,7 @@ from src.utils_plot import quiver_plot, write_flow, flowname_modifier
 from src.datasets import InferenceRun
 
 # INPUT
-args_model = './models/torch/Hui-LiteFlowNet.paramOnly'
+args_model = './models/pretrain_torch/Hui-LiteFlowNet.paramOnly'
 args_img1 = './images/first.png'
 args_img2 = './images/second.png'
 args_output = './out.flo'
