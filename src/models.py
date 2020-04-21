@@ -19,23 +19,23 @@ __all__ = ['hui_liteflownet', 'piv_liteflownet']  # For inference purpose
 # MEAN = ((0.173935, 0.180594, 0.192608), (0.172978, 0.179518, 0.191300))  # PIV-LiteFlowNet-en (Cai, 2019)
 MEAN = ((0.411618, 0.434631, 0.454253), (0.410782, 0.433645, 0.452793))  # LiteFlowNet (Hui, 2018)
 
-Backward_tensorGrid = {}
+backwarp_tensorGrid = {}
 
 
-def Backward(tensorInput, tensorFlow):
-	if str(tensorFlow.size()) not in Backward_tensorGrid:
-		tensorHorizontal = torch.linspace(-1.0, 1.0, tensorFlow.size(3)).view(1, 1, 1, tensorFlow.size(3)).expand(
-			tensorFlow.size(0), -1, tensorFlow.size(2), -1)
-		tensorVertical = torch.linspace(-1.0, 1.0, tensorFlow.size(2)).view(1, 1, tensorFlow.size(2), 1).expand(
-			tensorFlow.size(0), -1, -1, tensorFlow.size(3))
+def backwarp(tensorInput, tensorFlow):
+	if str(tensorFlow.size()) not in backwarp_tensorGrid:
+		tensorHorizontal = torch.linspace(-1.0, 1.0, tensorFlow.shape[3]).view(1, 1, 1, tensorFlow.shape[3]).expand(
+			tensorFlow.shape[0], -1, tensorFlow.shape[2], -1)
+		tensorVertical = torch.linspace(-1.0, 1.0, tensorFlow.shape[2]).view(1, 1, tensorFlow.shape[2], 1).expand(
+			tensorFlow.shape[0], -1, -1, tensorFlow.shape[3])
 
-		Backward_tensorGrid[str(tensorFlow.size())] = torch.cat([tensorHorizontal, tensorVertical], 1).cuda()
+		backwarp_tensorGrid[str(tensorFlow.size())] = torch.cat([tensorHorizontal, tensorVertical], 1).cuda()
 
-	tensorFlow = torch.cat([tensorFlow[:, 0:1, :, :] / ((tensorInput.size(3) - 1.0) / 2.0),
-							tensorFlow[:, 1:2, :, :] / ((tensorInput.size(2) - 1.0) / 2.0)], 1)
+	tensorFlow = torch.cat([tensorFlow[:, 0:1, :, :] / ((tensorInput.shape[3] - 1.0) / 2.0),
+							tensorFlow[:, 1:2, :, :] / ((tensorInput.shape[2] - 1.0) / 2.0)], 1)
 
 	return torch.nn.functional.grid_sample(input=tensorInput,
-										   grid=(Backward_tensorGrid[str(tensorFlow.size())] +
+										   grid=(backwarp_tensorGrid[str(tensorFlow.size())] +
 												 tensorFlow).permute(0, 2, 3, 1),
 										   mode='bilinear', padding_mode='zeros', align_corners=True)
 
@@ -129,7 +129,7 @@ class LiteFlowNet(torch.nn.Module):
 			def __init__(self, pyr_level, scale_factor):
 				super(Matching, self).__init__()
 
-				self.dblBackward = scale_factor
+				self.fltBackwarp = scale_factor
 
 				# Level 6 modifier
 				if pyr_level == 6:
@@ -162,7 +162,7 @@ class LiteFlowNet(torch.nn.Module):
 
 				if xflow is not None:
 					xflow = self.upConv_M(xflow)  # s * (x_dot ^s)
-					feat2 = Backward(tensorInput=feat2, tensorFlow=xflow * self.dblBackward)  # backward warping
+					feat2 = backwarp(tensorInput=feat2, tensorFlow=xflow * self.fltBackwarp)  # backward warping
 
 				if self.upCorr_M is None:
 					corr_M_out = torch.nn.functional.leaky_relu(
@@ -186,7 +186,7 @@ class LiteFlowNet(torch.nn.Module):
 				super(Subpixel, self).__init__()
 
 				# scalar multiplication to upsample the flow (s * x_dot ** s)
-				self.dblBackward = scale_factor
+				self.fltBackward = scale_factor
 
 				self.conv_S = torch.nn.Sequential(
 					torch.nn.Conv2d(in_channels=[0, 130, 130, 130, 194, 258, 386][pyr_level],
@@ -205,7 +205,7 @@ class LiteFlowNet(torch.nn.Module):
 				# feat2 = self.moduleFeat(feat2)
 
 				if xflow is not None:  # at this point xflow is already = s * (x_dot ^s) due to upconv/ConvTrans2d in M
-					feat2 = Backward(tensorInput=feat2, tensorFlow=xflow * self.dblBackward)
+					feat2 = backwarp(tensorInput=feat2, tensorFlow=xflow * self.fltBackward)
 
 				flow_S = self.conv_S(torch.cat([feat1, feat2, xflow], 1)) + (xflow if xflow is not None else 0.0)
 				return flow_S
@@ -215,7 +215,7 @@ class LiteFlowNet(torch.nn.Module):
 			def __init__(self, pyr_level, scale_factor):
 				super(Regularization, self).__init__()
 
-				self.dblBackward = scale_factor
+				self.fltBackward = scale_factor
 				self.intUnfold = [0, 7, 7, 5, 5, 3, 3][pyr_level]
 
 				if pyr_level < 5:
@@ -266,8 +266,8 @@ class LiteFlowNet(torch.nn.Module):
 													out_channels=1, kernel_size=1, stride=1, padding=0)
 
 			def forward(self, img1, img2, feat1, feat2, xflow_S):
-				rm_flow_R = xflow_S - xflow_S.view(xflow_S.size(0), 2, -1).mean(2, True).view(xflow_S.size(0), 2, 1, 1)
-				rgb_warp_R = Backward(tensorInput=img2, tensorFlow=xflow_S * self.dblBackward)  # ensure the same shape!
+				rm_flow_R = xflow_S - xflow_S.view(xflow_S.shape[0], 2, -1).mean(2, True).view(xflow_S.shape[0], 2, 1, 1)
+				rgb_warp_R = backwarp(tensorInput=img2, tensorFlow=xflow_S * self.fltBackward)  # ensure the same shape!
 				norm_R = (img1 - rgb_warp_R).pow(2.0).sum(1, True).sqrt().detach()  # L2 norm operation
 
 				conv_dist_R_out = self.conv_dist_R(
@@ -312,7 +312,7 @@ class LiteFlowNet(torch.nn.Module):
 
 	def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> Union[torch.Tensor, List[List[torch.Tensor]]]:
 		# Mean normalization due to training augmentation
-		for i in range(img1.size(1)):
+		for i in range(img1.shape[1]):
 			img1[:, i, :, :] = img1[:, i, :, :] - MEAN[0][i]
 			img2[:, i, :, :] = img2[:, i, :, :] - MEAN[1][i]
 
@@ -330,10 +330,10 @@ class LiteFlowNet(torch.nn.Module):
 		for pyr_level in range(1, len_feat):
 			# using bilinear interpolation
 			img1.append(torch.nn.functional.interpolate(input=img1[-1],
-														size=(feat1[pyr_level].size(2), feat1[pyr_level].size(3)),
+														size=(feat1[pyr_level].shape[2], feat1[pyr_level].shape[3]),
 														mode='bilinear', align_corners=False))
 			img2.append(torch.nn.functional.interpolate(input=img2[-1],
-														size=(feat2[pyr_level].size(2), feat2[pyr_level].size(3)),
+														size=(feat2[pyr_level].shape[2], feat2[pyr_level].shape[3]),
 														mode='bilinear', align_corners=False))
 
 		## NetE: Stacking the NetE network from Level 6 up to the LOWEST level (1 or 2)
@@ -451,7 +451,7 @@ class LiteFlowNet2(torch.nn.Module):
 			def __init__(self, pyr_level, scale_factor):
 				super(Matching, self).__init__()
 
-				self.dblBackward = scale_factor
+				self.fltBackwarp = scale_factor
 
 				# Level 6 modifier
 				if pyr_level == 6:
@@ -488,7 +488,7 @@ class LiteFlowNet2(torch.nn.Module):
 
 				if xflow is not None:
 					xflow = self.upConv_M(xflow)  # s * (x_dot ^s)
-					feat2 = Backward(tensorInput=feat2, tensorFlow=xflow * self.dblBackward)  # backward warping
+					feat2 = backwarp(tensorInput=feat2, tensorFlow=xflow * self.fltBackwarp)  # backward warping
 
 				if self.upCorr_M is None:
 					corr_M_out = torch.nn.functional.leaky_relu(
@@ -512,7 +512,7 @@ class LiteFlowNet2(torch.nn.Module):
 				super(Subpixel, self).__init__()
 
 				# scalar multiplication to upsample the flow (s * x_dot ** s)
-				self.dblBackward = scale_factor
+				self.fltBackward = scale_factor
 
 				self.conv_S = torch.nn.Sequential(
 					torch.nn.Conv2d(in_channels=[0, 130, 130, 130, 194, 258, 386][pyr_level],
@@ -535,7 +535,7 @@ class LiteFlowNet2(torch.nn.Module):
 				# feat2 = self.moduleFeat(feat2)
 
 				if xflow is not None:  # at this point xflow is already = s * (x_dot ^s) due to upconv/ConvTrans2d in M
-					feat2 = Backward(tensorInput=feat2, tensorFlow=xflow * self.dblBackward)
+					feat2 = backwarp(tensorInput=feat2, tensorFlow=xflow * self.fltBackward)
 
 				flow_S = self.conv_S(torch.cat([feat1, feat2, xflow], 1)) + (xflow if xflow is not None else 0.0)
 				return flow_S
@@ -545,7 +545,7 @@ class LiteFlowNet2(torch.nn.Module):
 			def __init__(self, pyr_level, scale_factor):
 				super(Regularization, self).__init__()
 
-				self.dblBackward = scale_factor
+				self.fltBackward = scale_factor
 				self.intUnfold = [0, 7, 7, 5, 5, 3, 3][pyr_level]
 
 				if pyr_level < 5:
@@ -596,8 +596,8 @@ class LiteFlowNet2(torch.nn.Module):
 													out_channels=1, kernel_size=1, stride=1, padding=0)
 
 			def forward(self, img1, img2, feat1, feat2, xflow_S):
-				rm_flow_R = xflow_S - xflow_S.view(xflow_S.size(0), 2, -1).mean(2, True).view(xflow_S.size(0), 2, 1, 1)
-				rgb_warp_R = Backward(tensorInput=img2, tensorFlow=xflow_S * self.dblBackward)  # ensure the same shape!
+				rm_flow_R = xflow_S - xflow_S.view(xflow_S.shape[0], 2, -1).mean(2, True).view(xflow_S.shape[0], 2, 1, 1)
+				rgb_warp_R = backwarp(tensorInput=img2, tensorFlow=xflow_S * self.fltBackward)  # ensure the same shape!
 				norm_R = (img1 - rgb_warp_R).pow(2.0).sum(1, True).sqrt().detach()  # L2 norm operation
 
 				conv_dist_R_out = self.conv_dist_R(
@@ -642,12 +642,12 @@ class LiteFlowNet2(torch.nn.Module):
 
 	def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> Union[torch.Tensor, List[List[torch.Tensor]]]:
 		# Mean normalization due to training augmentation
-		for i in range(img1.size(1)):
+		for i in range(img1.shape[1]):
 			img1[:, i, :, :] = img1[:, i, :, :] - MEAN[0][i]
 			img2[:, i, :, :] = img2[:, i, :, :] - MEAN[1][i]
 
 		# Init.
-		im_shape = (img1.size(2), img1.size(3))
+		im_shape = (img1.shape[2], img1.shape[3])
 
 		feat1 = self.NetC(img1)
 		feat2 = self.NetC(img2)
@@ -663,10 +663,10 @@ class LiteFlowNet2(torch.nn.Module):
 		for pyr_level in range(1, len_feat):
 			# using bilinear interpolation
 			img1.append(torch.nn.functional.interpolate(input=img1[-1],
-														size=(feat1[pyr_level].size(2), feat1[pyr_level].size(3)),
+														size=(feat1[pyr_level].shape[2], feat1[pyr_level].shape[3]),
 														mode='bilinear', align_corners=False))
 			img2.append(torch.nn.functional.interpolate(input=img2[-1],
-														size=(feat2[pyr_level].size(2), feat2[pyr_level].size(3)),
+														size=(feat2[pyr_level].shape[2], feat2[pyr_level].shape[3]),
 														mode='bilinear', align_corners=False))
 
 		## NetE: Stacking the NetE network from Level 6 up to the LOWEST level (1 or 2)
