@@ -72,7 +72,7 @@ def read_flow(filename: str):
     return flow
 
 
-def read_flow_collection(dirname: str):
+def read_flow_collection(dirname: str, start_at: int = 0, num_images: int = -1):
     """
     Load a collection of .flo files.
     An example directory may look like:
@@ -96,20 +96,23 @@ def read_flow_collection(dirname: str):
     allfiles = [f for f in os.listdir(dirname) if f.endswith('.flo')]
     for f in allfiles:
         match = pattern.findall(f)
-        if len(match) == 1:
-            frame_index = int(match[0])
+        if len(match) > 0:
+            frame_index = int(match[-1])
             filepath = os.path.join(dirname, f)
             files.append((frame_index, filepath))
-    files = sorted(files, key=lambda x: x[0])
 
-    flos = []
-    for frame_index, filepath in files:
+    files = sorted(files, key=lambda x: x[0])
+    files_sliced = files[start_at:] if num_images < 0 else files[start_at:start_at+num_images]
+
+    flos, flonames = [], []
+    for frame_index, filepath in files_sliced:
         flo_frame = read_flow(filepath)
         flos.append(flo_frame)
+        flonames.append(filepath)
 
     flos = np.array(flos)
 
-    return flos
+    return flos, flonames
 
 
 def write_flow(flow: np.ndarray, filename: str, norm: bool = False):
