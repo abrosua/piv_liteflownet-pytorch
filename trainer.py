@@ -26,6 +26,9 @@ parser.add_argument('--batch_size', '-b', type=int, default=8, help="Batch size"
 parser.add_argument('--crop_size', type=int, nargs='+', default=[256, 256],
                     help="Spatial dimension to crop training samples for training")
 parser.add_argument("--rgb_max", type=float, default=255.)
+parser.add_argument('--rgb_mean', type=float, nargs='+',
+                    default=[0.411618, 0.434631, 0.454253, 0.410782, 0.433645, 0.452793],
+                    help="The dataset's mean RGB value for normalizing the model's input tensor.")
 
 parser.add_argument('--weight_decay', '-wd', type=float, default=4e-4, metavar='W', help='weight decay parameter')
 parser.add_argument('--bias_decay', '-bd', type=float, default=0, metavar='B', help='bias decay parameter')
@@ -51,13 +54,16 @@ parser.add_argument('--resume', default='', type=str, metavar='PATH', help='path
 # For instance
 utils.add_arguments_for_module(parser, models, argument_for_class='model', default='LiteFlowNet',
                                parameter_defaults={'starting_scale': 10.0,
-                                                   'lowest_level': 1})
+                                                   'lowest_level': 1,
+                                                   'rgb_mean': [0.411618, 0.434631, 0.454253, 0.410782, 0.433645, 0.452793],
+                                                   })
 
 utils.add_arguments_for_module(parser, loss, argument_for_class='loss', default='MultiScale',
                                parameter_defaults={'div_scale': 0.2,
                                                    'startScale': 1,
                                                    'l_weight': [0.001, 0.001, 0.001, 0.001, 0.001, 0.01],
-                                                   'norm': 'L2'})
+                                                   'norm': 'L2',
+                                                   })
 
 utils.add_arguments_for_module(parser, torch.optim, argument_for_class='optimizer', default='Adam',
                                skip_params=['params'])

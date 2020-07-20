@@ -14,11 +14,6 @@ __all__ = ['hui_liteflownet', 'piv_liteflownet']  # For inference purpose
 #
 ##################################################################################
 
-# Mean augmentation global variable
-# MEAN = ((0.194286, 0.190633, 0.191766), (0.194220, 0.190595, 0.191701))  # PIV-LiteFlowNet2-en (Silitonga, 2020)
-# MEAN = ((0.173935, 0.180594, 0.192608), (0.172978, 0.179518, 0.191300))  # PIV-LiteFlowNet-en (Cai, 2019)
-MEAN = ((0.411618, 0.434631, 0.454253), (0.410782, 0.433645, 0.452793))  # LiteFlowNet (Hui, 2018)
-
 backwarp_tensorGrid = {}
 
 
@@ -42,11 +37,22 @@ def backwarp(tensorInput, tensorFlow):
 
 # ----------- NETWORK DEFINITION -----------
 class LiteFlowNet(torch.nn.Module):
-	def __init__(self, starting_scale: int = 40, lowest_level: int = 2) -> None:
+	def __init__(self, starting_scale: int = 40, lowest_level: int = 2,
+				 rgb_mean: Union[Tuple[float, ...], List[float]] = (0.411618, 0.434631, 0.454253, 0.410782, 0.433645, 0.452793)
+				 ) -> None:
+		"""
+		LiteFlowNet network architecture by Hui, 2018.
+		The default rgb_mean value is obtained from the original Caffe model.
+		:param starting_scale: Flow factor value for the first pyramid layer.
+		:param lowest_level: Determine the last pyramid level to use for the decoding.
+		:param rgb_mean: The datasets mean pixel rgb value.
+		"""
 		super(LiteFlowNet, self).__init__()
 		self.mean_aug = [[0, 0, 0], [0, 0, 0]]
 
 		## INIT.
+		rgb_mean = list(rgb_mean)
+		self.MEAN = [rgb_mean[:3], rgb_mean[3:]]
 		self.lowest_level = int(lowest_level)
 		self.PLEVELS = 6
 		self.SCALEFACTOR = []
@@ -313,8 +319,8 @@ class LiteFlowNet(torch.nn.Module):
 	def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> Union[torch.Tensor, List[List[torch.Tensor]]]:
 		# Mean normalization due to training augmentation
 		for i in range(img1.shape[1]):
-			img1[:, i, :, :] = img1[:, i, :, :] - MEAN[0][i]
-			img2[:, i, :, :] = img2[:, i, :, :] - MEAN[1][i]
+			img1[:, i, :, :] = img1[:, i, :, :] - self.MEAN[0][i]
+			img2[:, i, :, :] = img2[:, i, :, :] - self.MEAN[1][i]
 
 		feat1 = self.NetC(img1)
 		feat2 = self.NetC(img2)
@@ -365,10 +371,21 @@ class LiteFlowNet(torch.nn.Module):
 
 
 class LiteFlowNet2(torch.nn.Module):
-	def __init__(self, starting_scale: int = 40, lowest_level: int = 3) -> None:
+	def __init__(self, starting_scale: int = 40, lowest_level: int = 3,
+				 rgb_mean: Union[Tuple[float, ...], List[float]] = (0.411618, 0.434631, 0.454253, 0.410782, 0.433645, 0.452793)
+				 ) -> None:
+		"""
+		LiteFlowNet2 network architecture by Hui, 2020.
+		The default rgb_mean value is obtained from the original Caffe model.
+		:param starting_scale: Flow factor value for the first pyramid layer.
+		:param lowest_level: Determine the last pyramid level to use for the decoding.
+		:param rgb_mean: The datasets mean pixel rgb value.
+		"""
 		super(LiteFlowNet2, self).__init__()
 
 		## INIT.
+		rgb_mean = list(rgb_mean)
+		self.MEAN = [rgb_mean[:3], rgb_mean[3:]]
 		self.lowest_level = int(lowest_level)
 		self.PLEVELS = 6
 		self.SCALEFACTOR = []
@@ -643,8 +660,8 @@ class LiteFlowNet2(torch.nn.Module):
 	def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> Union[torch.Tensor, List[List[torch.Tensor]]]:
 		# Mean normalization due to training augmentation
 		for i in range(img1.shape[1]):
-			img1[:, i, :, :] = img1[:, i, :, :] - MEAN[0][i]
-			img2[:, i, :, :] = img2[:, i, :, :] - MEAN[1][i]
+			img1[:, i, :, :] = img1[:, i, :, :] - self.MEAN[0][i]
+			img2[:, i, :, :] = img2[:, i, :, :] - self.MEAN[1][i]
 
 		# Init.
 		im_shape = (img1.shape[2], img1.shape[3])
@@ -731,10 +748,13 @@ def piv_liteflownet(params: Optional[OrderedDict] = None, version: int = 1):
 		params : pretrained weights of the network. will create a new one if not set
 		version	: to determine whether to use LiteFlowNet or LiteFlowNet2 as the model
 	"""
+	# Mean augmentation global variable
 	if version == 1:  # using LiteFlowNet
-		model = LiteFlowNet(starting_scale=10, lowest_level=1)
+		MEAN = (0.173935, 0.180594, 0.192608, 0.172978, 0.179518, 0.191300)  # PIV-LiteFlowNet-en (Cai, 2019)
+		model = LiteFlowNet(starting_scale=10, lowest_level=1, rgb_mean=MEAN)
 	elif version == 2:  # using LiteFlowNet2
-		model = LiteFlowNet2(starting_scale=10, lowest_level=2)
+		MEAN = (0.194286, 0.190633, 0.191766, 0.194220, 0.190595, 0.191701)  # PIV-LiteFlowNet2-en (Silitonga, 2020)
+		model = LiteFlowNet2(starting_scale=10, lowest_level=2, rgb_mean=MEAN)
 	else:
 		raise ValueError(f'Wrong input of model version (input = {version})! Choose between version 1 or 2 only!')
 
