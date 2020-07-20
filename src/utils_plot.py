@@ -23,7 +23,7 @@ flowIO.h
 UNKNOWN_FLOW_THRESH = 1e9
 
 
-def read_flow(filename: str):
+def read_flow(filename: str, crop_window: Union[int, Tuple[int, int, int, int]] = 0) -> np.array:
     """
         Read a .flo file (Middlebury format).
         Parameters
@@ -69,10 +69,11 @@ def read_flow(filename: str):
     flow = np.resize(tmp, (int(height), int(width), int(n_bands)))
     flo.close()
 
-    return flow
+    return array_cropper(flow, crop_window=crop_window)
 
 
-def read_flow_collection(dirname: str, start_at: int = 0, num_images: int = -1):
+def read_flow_collection(dirname: str, start_at: int = 0, num_images: int = -1,
+                         crop_window: Union[int, Tuple[int, int, int, int]] = 0) -> Tuple[np.array, List[str]]:
     """
     Load a collection of .flo files.
     An example directory may look like:
@@ -106,7 +107,7 @@ def read_flow_collection(dirname: str, start_at: int = 0, num_images: int = -1):
 
     flos, flonames = [], []
     for frame_index, filepath in files_sliced:
-        flo_frame = read_flow(filepath)
+        flo_frame = read_flow(filepath, crop_window=crop_window)
         flos.append(flo_frame)
         flonames.append(filepath)
 
@@ -359,6 +360,16 @@ def vertical_flip_flow(flow):
     flow = np.copy(np.flipud(flow))
     flow[:, :, 1] *= -1
     return flow
+
+
+def array_cropper(array, crop_window: Union[int, Tuple[int, int, int, int]] = 0):
+    # Cropper init.
+    s = array.shape  # Create image cropper
+    crop_window = (crop_window,) * 4 if type(crop_window) is int else crop_window
+    assert len(crop_window) == 4
+
+    # Cropping the array
+    return array[crop_window[0] : s[0]-crop_window[1], crop_window[2] : s[1]-crop_window[3]]
 
 
 # ---------------------- TESTING ----------------------
