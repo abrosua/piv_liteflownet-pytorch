@@ -726,7 +726,8 @@ def hui_liteflownet(params: Optional[OrderedDict] = None, version: int = 1):
 		version	: to determine whether to use LiteFlowNet or LiteFlowNet2 as the model
 	"""
 	if version == 1:
-		model = LiteFlowNet()
+		MEAN = (0.411618, 0.434631, 0.454253, 0.410782, 0.433645, 0.452793)  # (Hui, 2018)
+		model = LiteFlowNet(rgb_mean=MEAN)
 	elif version == 2:  # using LiteFlowNet2
 		model = LiteFlowNet2()
 	else:
