@@ -172,15 +172,28 @@ if __name__ == '__main__':
         is_all_flow = (args.start == 0) and (args.num_images < 0)
         num_images = "end" if args.num_images < 0 else args.num_images
 
-        outsubdir = f"{os.path.basename(args.input)}-{args.start}_{num_images}" if not is_all_flow \
+        # Check basename
+        checkname = os.path.basename(args.input)
+        if checkname.lower() in ["left", "right"]:
+            extradir = checkname.lower()
+            bname = os.path.basename(os.path.dirname(args.input))
+        else:
+            extradir = None
+            bname = checkname
+
+
+        outsubdir = f"{bname}-{args.start}_{num_images}" if not is_all_flow \
             else os.path.basename(args.input)
         args.save = os.path.join(args.output, netname, outsubdir)
-        flodir = os.path.join(args.save, "flow")
+        flodir = os.path.join(args.save, "flow") if extradir is None else os.path.join(args.save, "flow", extradir)
 
         # Setting up the logger
         block.log(f"Initializing save directory: {args.save}")
         os.makedirs(args.save) if not os.path.exists(args.save) else None  # Create the save directory
-        log_file = os.path.join(args.save, "args.txt")
+
+        # Setting up the metadata filename
+        argsname = "args.txt" if extradir is None else f"args_{extradir}.txt"
+        log_file = os.path.join(args.save, argsname)
 
     # Saving the log file
     for argument, value in sorted(vars(args).items()):

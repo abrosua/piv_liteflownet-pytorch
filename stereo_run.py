@@ -100,13 +100,16 @@ def _flo_process(args):
     beta = [a for a in args.alpha]
     naming = ['left', 'right']
 
-    left_flos = sorted(glob(os.path.join(args.save, os.path.join(f"*{naming[0]}*", "*.flo"))))
-    right_dir = glob(os.path.join(args.save, f"*{naming[1]}*"))[0]
+    left_flos = sorted(glob(os.path.join(args.save, naming[0], "*.flo")))
+    right_dir = os.path.join(args.save, naming[1])
 
     for left_flo in tqdm(left_flos, ncols=100, leave=True, unit='flo', desc=f'Evaluating {args.save}'):
         # Init.
-        flobase = os.path.basename(left_flo)
-        right_flo = os.path.join(right_dir, flobase)
+        flobase = os.path.basename(left_flo).rsplit("-", 1)[0]
+        right_flo = os.path.join(right_dir, flobase + "-R_out.flo")
+
+        # Checking the file(s) availability
+        assert os.path.isfile(left_flo) and os.path.isfile(right_flo)
 
         # Generate the flow array
         flow_cal = [_stereo_cal(read_flow(floname),
@@ -116,13 +119,14 @@ def _flo_process(args):
                     ]
         stereo_flow = willert(flow_cal, args.theta, beta)
 
-        flosave = str(flobase.rsplit('_', 1)[0]) + '_2d3c.flo'
+        flosave = flobase + '_2d3c.flo'
         write_flow(stereo_flow, os.path.join(args.save, "stereo", flosave))
 
 
 def _stereo_cal(flow, A, window_size: List[float], time_frame: float, calibrate: bool = False):
     # Real calibration
     length_cal = np.array(window_size) / np.array(flow.shape)  # meters
+    # TODO: Fix the spatial calibration due to the Stereoscopic recons!
 
     if calibrate:
         flow = flow * length_cal * time_frame  # meters / second
