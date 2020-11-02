@@ -33,9 +33,9 @@ parser.add_argument('--calib', default=None, type=float, help="real length calib
 
 parser.add_argument('--model', default="./models/pretrain_torch/PIV-LiteFlowNet-en.paramOnly", type=str,
                     help="model weight parameters to use")
-parser.add_argument('--model_version', default=1, type=int, choices=[1, 2],
+parser.add_argument('--model-version', default=1, type=int, choices=[1, 2],
                     help="choose which base model version to use, LiteFlowNet or LiteFlowNet2")
-parser.add_argument('--inference_mode', default='manual', type=str, choices=['manual', 'direct'],
+parser.add_argument('--inference-mode', default='manual', type=str, choices=['manual', 'direct'],
                     help="choose which inference method to use")
 
 main_dir = os.path.dirname(os.path.realpath(__file__))
@@ -156,8 +156,6 @@ if __name__ == "__main__":
     debug_input = [
         'stereo.py',
         '--coeff', './outputs/30-5_0.json',
-        '--root', 'null',
-        '--calib', 'null',
     ]
     sys.argv = debug_input  # Uncomment for debugging
 
