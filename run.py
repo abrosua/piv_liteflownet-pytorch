@@ -28,7 +28,8 @@ parser.add_argument("--model", "-m", type=str, choices=["hui", "piv"],
                     help="Select which model to solve the problem!")
 parser.add_argument("--version", "-v", type=int, choices=[1, 2], default=1,
                     help="Select the LiteFlowNet model backbone version (i.e., LiteFlowNet or LiteFlowNet2)!")
-parser.add_argument("--input", "-i", default="./images/demo", type=str, help="Input images directory.")
+parser.add_argument("--input", "-i", default=["./images/demo"], type=str, nargs="+",
+                    help="Input images directory(ies).")
 parser.add_argument("--output", "-o", default="./results", type=str, help="Main output directory.")
 parser.add_argument("--no_cuda", action="store_true")
 
@@ -114,10 +115,10 @@ if __name__ == '__main__':
         "run.py",
         "--start", "0", "--num_images", "-1",
         "--model", "piv", "--version", "1",
-        "--input", "./images/test_infer",
+        "--input", "./images/a", "./images/b", "./images/st/Left", "./images/st/Right",
         "--output", "./test-output",
     ]
-    # sys.argv = debug_input  # Uncomment for debugging
+    sys.argv = debug_input  # Uncomment for debugging
 
     # ------------------------------ PARSING THE INPUT ------------------------------
     # Parse the official arguments
@@ -166,38 +167,43 @@ if __name__ == '__main__':
         else:
             raise ValueError(f"Unknown model parameter at '{args.model}'! Choose between 'hui' and 'piv' only!")
 
-    # Setting up output directory
-    with utils.TimerBlock(f"Setting up output directory") as block:
-        # Name checking
-        is_all_flow = (args.start == 0) and (args.num_images < 0)
-        num_images = "end" if args.num_images < 0 else args.num_images
+    # Multiple input directory processing
+    imdirs = args.input
+    for i, imdir in enumerate(imdirs):
+        print(f"---------- Processing images from directory #{str(i).zfill(2)}: '{imdir}'")
+        args.input = imdir
 
-        # Check basename
-        checkname = os.path.basename(args.input)
-        if checkname.lower() in ["left", "right"]:
-            extradir = checkname.lower()
-            bname = os.path.basename(os.path.dirname(args.input))
-        else:
-            extradir = None
-            bname = checkname
+        # Setting up output directory
+        with utils.TimerBlock(f"Setting up output directory #{str(i).zfill(2)}") as block:
+            # Name checking
+            is_all_flow = (args.start == 0) and (args.num_images < 0)
+            num_images = "end" if args.num_images < 0 else args.num_images
 
+            # Check basename
+            checkname = os.path.basename(args.input)
+            if checkname.lower() in ["left", "right"]:  # For stereoscopic images
+                extradir = checkname.lower()
+                bname = os.path.basename(os.path.dirname(args.input))
+            else:
+                extradir = None
+                bname = checkname
 
-        outsubdir = f"{bname}-{args.start}_{num_images}" if not is_all_flow \
-            else os.path.basename(args.input)
-        args.save = os.path.join(args.output, netname, outsubdir)
-        flodir = os.path.join(args.save, "flow") if extradir is None else os.path.join(args.save, "flow", extradir)
+            outsubdir = f"{bname}-{args.start}_{num_images}" if not is_all_flow else bname
+            args.save = os.path.join(args.output, netname, outsubdir)
+            flodir = os.path.join(args.save, "flow") if extradir is None else os.path.join(args.save, "flow", extradir)
+            args.saveflo = flodir
 
-        # Setting up the logger
-        block.log(f"Initializing save directory: {args.save}")
-        os.makedirs(args.save) if not os.path.exists(args.save) else None  # Create the save directory
+            # Setting up the logger
+            block.log(f"Initializing save directory #{str(i).zfill(2)}: {args.save}")
+            os.makedirs(args.save) if not os.path.exists(args.save) else None  # Create the save directory
 
-        # Setting up the metadata filename
-        argsname = "args.txt" if extradir is None else f"args_{extradir}.txt"
-        log_file = os.path.join(args.save, argsname)
+            # Setting up the metadata filename
+            argsname = "args.txt" if extradir is None else f"args_{extradir}.txt"
+            log_file = os.path.join(args.save, argsname)
 
-    # Saving the log file
-    for argument, value in sorted(vars(args).items()):
-        block.log2file(log_file, '{}: {}'.format(argument, value))
+        # Saving the log file
+        for argument, value in sorted(vars(args).items()):
+            block.log2file(log_file, '{}: {}'.format(argument, value))
 
-    # Main script
-    main(net=net, start_id=args.start, num_images=args.num_images, inputdir=args.input, savedir=flodir, device=device)
+        # Main script
+        main(net=net, start_id=args.start, num_images=args.num_images, inputdir=imdir, savedir=flodir, device=device)
