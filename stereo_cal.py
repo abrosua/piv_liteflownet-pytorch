@@ -58,12 +58,13 @@ def write_coeff(save: str, name: str, coeffdict: dict):
     Args:
         save        : (str) the respective saving directory.
         name        : (str) stereo image basename, without specifying either from left or right camera.
-        coeffdict   : (dict) left and right mapping coefficients, stored as a dictionary.
+        coeffdict   : (dict) left and right mapping coefficients.
+        calibdict   : (dict) left and right calibration point.
     Returns:
         write the mapping coefficients.
-        coeffdf : (pd.DataFrame) coeffdict in DataFrame format
+        coeffdf : (pd.DataFrame) stereo coefficient and calibration report in DataFrame format.
     """
-    assert len(coeffs) == 2  # Mapping coefficients for left and right camera
+    assert len(coeffdict) == 2  # Mapping coefficients for left and right camera
     os.makedirs(save) if not os.path.isdir(save) else None
 
     coeffname = os.path.join(save, f"{name}.json")
@@ -86,7 +87,7 @@ if __name__ == '__main__':
         '--name', '30-5_0',
         '--save', './outputs'
     ]
-    # sys.argv = debug_input  # Uncomment for debugging
+    sys.argv = debug_input  # Uncomment for debugging
 
     # -------------------- INPUT Init. --------------------
     args = parser.parse_args()
@@ -99,7 +100,7 @@ if __name__ == '__main__':
 
     # Storing init.
     gray_images, matched_imgs, dewarped_images = [], [], []
-    old_coords, new_coords = [], []
+    old_coords, new_coords, calib_x = [], [], []
     naming = ['Left', 'Right']
     coeffs = {}
 
@@ -135,6 +136,9 @@ if __name__ == '__main__':
         # new_pts = dewarping(old_pts, ref_points, c_points)
         new_pts = Guess(old_pts, c_points, select_points[0])()
 
+        # Calibration point
+        calib_x.append(np.abs(new_pts[select_points[0], 0] - new_pts[select_points[1], 0]))
+
         # Calculating the mapping coefficient
         A = map_coeff(old_pts, new_pts, select_points[0])
         dewarped_img = warp(matched_imgs[i], old_pts, select_points[0], A)
@@ -144,6 +148,7 @@ if __name__ == '__main__':
         dewarped_images.append(dewarped_img)
         coeffs[naming[i]] = A.tolist()
 
+    coeffs["calib"] = np.mean(calib_x)
     plt.show()
 
     # Plot the old and new coordinates
