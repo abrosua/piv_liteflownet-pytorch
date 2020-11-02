@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 import os, sys
 import argparse
 from glob import glob
-from typing import List
+from typing import List, Optional
 import json
 
 from stereo.dewarp import nl_trans
@@ -28,7 +28,8 @@ parser.add_argument('--alpha', default=[0.0, 0.0], type=float, nargs='+',
                     help='scheimpflug criterion, image plane angle')
 parser.add_argument('--window-size', '-ws', default=[1.0, 1.0], type=float, nargs='+',
                     help="Window size in the real length")
-parser.add_argument('--fps', default=60, type=int, help="camera frame rate (FPS)")
+parser.add_argument('--fps', default=1, type=int, help="camera frame rate (FPS).")
+parser.add_argument('--calib', default=None, type=float, help="real length calibration in meters (m).")
 
 parser.add_argument('--model', default="./models/pretrain_torch/PIV-LiteFlowNet-en.paramOnly", type=str,
                     help="model weight parameters to use")
@@ -61,6 +62,12 @@ def direct_process(args, net, device: str = 'cpu'):
     coeffdict = read_coeff(args.coeff)
     beta = [a for a in args.alpha]
 
+    # Check calibration point
+    if "calib" in coeffdict.keys():
+        calib = args.calib / coeffdict["calib"] if args.calib else None
+    else:
+        calib = None
+
     # Instantiate dataloader
     stereo_dataset = InferenceRun(root=args.root, pair=False, use_stereo=True)
     stereo_dataloader = DataLoader(stereo_dataset, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
@@ -71,7 +78,8 @@ def direct_process(args, net, device: str = 'cpu'):
 
         flow_cal = [_stereo_cal(estimate(net, images[i], images[i+1], tensor=False),
                                 coeffdict[naming.capitalize()],
-                                args.window_size, 1 / args.fps, True)
+                                args.fps,
+                                calib)
                     for i, naming in enumerate(['left', 'right'])
                     ]
         stereo_flow = willert(flow_cal, args.theta, beta)
@@ -100,6 +108,12 @@ def _flo_process(args):
     beta = [a for a in args.alpha]
     naming = ['left', 'right']
 
+    # Check calibration point
+    if "calib" in coeffdict.keys():
+        calib = args.calib / coeffdict["calib"] if args.calib else None
+    else:
+        calib = None
+
     left_flos = sorted(glob(os.path.join(args.save, naming[0], "*.flo")))
     right_dir = os.path.join(args.save, naming[1])
 
@@ -114,7 +128,8 @@ def _flo_process(args):
         # Generate the flow array
         flow_cal = [_stereo_cal(read_flow(floname),
                                 coeffdict[naming[i].capitalize()],
-                                args.window_size, 1 / args.fps, True)
+                                args.fps,
+                                calib)
                     for i, floname in enumerate([left_flo, right_flo])
                     ]
         stereo_flow = willert(flow_cal, args.theta, beta)
@@ -123,16 +138,17 @@ def _flo_process(args):
         write_flow(stereo_flow, os.path.join(args.save, "stereo", flosave))
 
 
-def _stereo_cal(flow, A, window_size: List[float], time_frame: float, calibrate: bool = False):
-    # Real calibration
-    length_cal = np.array(window_size) / np.array(flow.shape)  # meters
-    # TODO: Fix the spatial calibration due to the Stereoscopic recons!
-
-    if calibrate:
-        flow = flow * length_cal * time_frame  # meters / second
-
+def _stereo_cal(flow, A, fps: float, calibrate: Optional[List[float]] = None):
+    # Stereo calibration
     flow_cal = nl_trans(flow[:, :, 0], flow[:, :, 1], A)
-    return np.dstack(flow_cal)
+    flow_stereo = np.dstack(flow_cal)
+
+    # Real flow calibration
+    # TODO: CHECK the spatial calibration due to the Stereoscopic recons!
+    if calibrate:
+        flow_stereo = flow_stereo * calibrate * fps  # meters / second
+
+    return flow_stereo
 
 
 if __name__ == "__main__":
@@ -140,7 +156,8 @@ if __name__ == "__main__":
     debug_input = [
         'stereo.py',
         '--coeff', './outputs/30-5_0.json',
-        '--root', '',
+        '--root', 'null',
+        '--calib', 'null',
     ]
     sys.argv = debug_input  # Uncomment for debugging
 
