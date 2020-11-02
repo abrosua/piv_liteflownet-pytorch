@@ -77,8 +77,7 @@ def findLocalMax(image: np.array):
 
 def select_ref(coords):
     """
-    Choosing the 4 nearest reference points
-    using Left - Right - Down - Left (L-R-D-L) direction.
+    Choosing the 4 nearest reference points using clockwise, Left - Right - Down - Left (L-R-D-L), direction.
     Args:
         select_ref  : (N, 2) The original coordinate points.
     """
