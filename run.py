@@ -8,13 +8,15 @@ from glob import glob
 from typing import Tuple
 
 import torch
+from torch.utils.data import DataLoader
 from PIL import Image
 from tqdm import tqdm
 
-from inference import Inference
+from inference import Inference, estimate
 from src import utils
 from src.models import piv_liteflownet, hui_liteflownet
 from src.utils_plot import write_flow, flowname_modifier
+from src.datasets import Run
 
 
 # ------------------ CLI ------------------
@@ -23,6 +25,7 @@ parser = argparse.ArgumentParser(description='Inferencing script for LiteFlowNet
 parser.add_argument("--start", "-s", type=int, default=0, help="Input image starting index.")
 parser.add_argument("--num_images", "-n", type=int, default=-1,
                     help="Number of image(s) to process from the directory.")
+parser.add_argument("--is_pair", "-p", action="store_true", help="To check if the input image format is in pair.")
 
 parser.add_argument("--model", "-m", type=str, choices=["hui", "piv"],
                     help="Select which model to solve the problem!")
@@ -109,13 +112,47 @@ def main(net, inputdir: str, savedir: str, start_id: int = 0, num_images: int = 
     tqdm.write(f'Finish processing all images from {inputdir} path!')
 
 
+def main_dl(net, inputdir: str, savedir: str, is_pair: bool = False, start_id: int = 0, num_images: int = -1,
+            device: str = "cpu"):
+    """
+    Main function for motion estimator inference with PyTorch's DataLoader.
+    :param net: The model object.
+    :param inputdir: The directory to the input image(s).
+    :param savedir: The directory target to save the flo file(s).
+    :param start_id: Starting index of the processed image.
+    :param num_images: Number of image(s) to process.
+    :param device: Select the processing device(s).
+    :return:
+    """
+
+    # Init.
+    os.makedirs(savedir) if not os.path.isdir(savedir) else None  # Checking the save directory
+
+    # Dataset preparation
+    infer_dataset = Run(root=inputdir, is_pair=is_pair, n_images=num_images, start_at=start_id)
+    infer_dataloader = DataLoader(infer_dataset, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
+    infer_size = len(infer_dataset)
+    print(f"Processing {infer_size} pairs of images...")
+
+    for images, imname in tqdm(infer_dataloader, ncols=100, leave=True, unit='pair', desc=f'Evaluating {inputdir}'):
+        # Model inference
+        images[0], images[1] = images[0].to(device), images[1].to(device)
+        out_flow = estimate(net, images[0], images[1], tensor=False)
+
+        # Writing the output files
+        out_name = flowname_modifier(imname, savedir, pair=is_pair)
+        write_flow(out_flow, out_name)
+
+    tqdm.write(f'Finish processing all images from {inputdir} path!')
+
+
 if __name__ == '__main__':
     # Debugging test
     debug_input = [
         "run.py",
         "--start", "0", "--num_images", "-1",
         "--model", "piv", "--version", "1",
-        "--input", "./images/a", "./images/b", "./images/st/Left", "./images/st/Right",
+        "--input", "./images/test",
         "--output", "./test-output",
     ]
     sys.argv = debug_input  # Uncomment for debugging
@@ -207,3 +244,4 @@ if __name__ == '__main__':
 
         # Main script
         main(net=net, start_id=args.start, num_images=args.num_images, inputdir=imdir, savedir=flodir, device=device)
+        # main_dl(net=net, is_pair=args.is_pair, start_id=args.start, num_images=args.num_images, inputdir=imdir, savedir=flodir, device=device)
