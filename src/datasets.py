@@ -435,6 +435,59 @@ class InferenceRun(Dataset):
         return imgs, im_name
 
 
+class Run(Dataset):
+    def __init__(self, root: str, is_pair: bool = True, n_images: int = -1, start_at: int = 0) -> None:
+        if os.path.isdir(root):
+            file_list = image_files_from_folder(root, pair=is_pair, n_images=n_images, start_at=start_at, upper=False)
+        else:
+            raise ValueError(f"Input image directory is NOT found! '{root}'")
+
+        prev_file = None
+        self.image_list, self.name_list = [], []
+
+        for file in file_list:
+            if is_pair:  # Using paired images
+                imbase, imext = os.path.splitext(os.path.basename(str(file)))
+                fbase = imbase.rsplit('_', 1)[0]
+
+                img1 = file
+                img2 = os.path.join(root, str(fbase) + '_img2' + imext)
+
+            else:  # Using sequential images
+                if prev_file is None:
+                    prev_file = file
+                    continue
+                else:
+                    img1, img2 = prev_file, file
+                    fbase = os.path.splitext(os.path.basename(str(img1)))[0]
+                    prev_file = file
+
+            if not os.path.isfile(img1) or not os.path.isfile(img2):
+                continue
+
+            self.image_list.append([img1, img2])
+            self.name_list.append(fbase)
+
+        assert len(self.image_list) == len(self.name_list)
+        self.size = len(self.name_list)
+
+    def __len__(self) -> int:
+        return self.size
+
+    def __getitem__(self, index: int) -> Tuple[List[torch.Tensor], str]:
+        # Init.
+        index = index % self.size
+        im_name = self.name_list[index]
+        img1 = read_gen(self.image_list[index][0])
+        img2 = read_gen(self.image_list[index][1])
+
+        # Cropper and totensor tranformer for the images
+        transformer = transforms.ToTensor()
+
+        return [transformer(img1), transformer(img2)], im_name
+
+
+
 class InferenceEval(Dataset):
     def __init__(self, inference_size: Tuple = (-1, -1), root: str = '', set_type: Optional[str] = None) -> None:
         self.render_size = list(inference_size)

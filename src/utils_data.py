@@ -10,31 +10,34 @@ from typing import Dict, Optional, List, Tuple, Union, Iterable, Any
 from src.utils_plot import read_flow
 
 
-def image_files_from_folder(folder: str, pair: bool = True, uppercase: bool = True,
+def image_files_from_folder(folder: str, pair: bool = True, upper: bool = True, n_images: int = -1, start_at: int = 0,
                             extensions: Tuple[str] = ('jpg', 'jpeg', 'png', 'bmp', 'tif', 'ppm')
                             ) -> List[str]:
     img_files = []
     if pair:  # Images as pair (take the first pair only)
         for ext in extensions:
             img_files += sorted(glob(os.path.join(folder, f'*_img1.{ext}')))
-            if uppercase:
+            if upper:
                 img_files += sorted(glob(os.path.join(folder, f'*_img1.{ext.upper()}')))
 
 
     else:  # Images as a sequence of frames
         for ext in extensions:
             img_files += sorted(glob(os.path.join(folder, f'*.{ext}')))
-            if uppercase:
+            if upper:
                 img_files += sorted(glob(os.path.join(folder, f'*.{ext.upper()}')))
 
-    return img_files
+    if n_images < 0:
+        return img_files[start_at:]
+    else:
+        return img_files[start_at : start_at+n_images]
 
 
-def flo_files_from_folder(folder: str, uppercase: bool = True, extensions: Tuple[str] = '.flo') -> List[str]:
+def flo_files_from_folder(folder: str, upper: bool = True, extensions: Tuple[str] = '.flo') -> List[str]:
     flo_files = []
     for ext in extensions:
         flo_files += sorted(glob(os.path.join(folder, f'*.{ext}')))
-        if uppercase:
+        if upper:
             flo_files += sorted(glob(os.path.join(folder, f'*.{ext.upper()}')))
 
     return flo_files
