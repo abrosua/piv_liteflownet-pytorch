@@ -140,7 +140,7 @@ def main_dl(net, inputdir: str, savedir: str, is_pair: bool = False, start_id: i
         out_flow = estimate(net, images[0], images[1], tensor=False)
 
         # Writing the output files
-        out_name = flowname_modifier(imname, savedir, pair=is_pair)
+        out_name = flowname_modifier(imname[0], savedir, pair=is_pair)
         write_flow(out_flow, out_name)
 
     tqdm.write(f'Finish processing all images from {inputdir} path!')
@@ -152,7 +152,7 @@ if __name__ == '__main__':
         "run.py",
         "--start", "0", "--num_images", "-1",
         "--model", "piv", "--version", "1",
-        "--input", "./images/test",
+        "--input", "./images/stereo/left", "./images/stereo/right ",
         "--output", "./test-output",
     ]
     sys.argv = debug_input  # Uncomment for debugging
@@ -243,5 +243,5 @@ if __name__ == '__main__':
             block.log2file(log_file, '{}: {}'.format(argument, value))
 
         # Main script
-        main(net=net, start_id=args.start, num_images=args.num_images, inputdir=imdir, savedir=flodir, device=device)
-        # main_dl(net=net, is_pair=args.is_pair, start_id=args.start, num_images=args.num_images, inputdir=imdir, savedir=flodir, device=device)
+        # main(net=net, start_id=args.start, num_images=args.num_images, inputdir=imdir, savedir=flodir, device=device)
+        main_dl(net=net, is_pair=args.is_pair, start_id=args.start, num_images=args.num_images, inputdir=imdir, savedir=flodir, device=device)

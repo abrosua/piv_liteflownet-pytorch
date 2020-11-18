@@ -64,7 +64,7 @@ def write_coeff(save: str, name: str, coeffdict: dict):
         write the mapping coefficients.
         coeffdf : (pd.DataFrame) stereo coefficient and calibration report in DataFrame format.
     """
-    assert len(coeffdict) == 2  # Mapping coefficients for left and right camera
+    # assert len(coeffdict) == 2  # Mapping coefficients for left and right camera
     os.makedirs(save) if not os.path.isdir(save) else None
 
     coeffname = os.path.join(save, f"{name}.json")
@@ -83,9 +83,9 @@ if __name__ == '__main__':
     # -------------------- Debugging mode here --------------------
     debug_input = [
         'stero_cal.py',
-        '--root', './imgs',
-        '--name', '30-5_0',
-        '--save', './outputs'
+        '--root', './images/stereo',
+        '--name', '30-5',
+        '--save', './test-output/stereo'
     ]
     sys.argv = debug_input  # Uncomment for debugging
 
@@ -96,7 +96,7 @@ if __name__ == '__main__':
     imshape = images[0].shape[:2]
 
     # Template input
-    template = gen_template(TC=5, HC=25, LC=25)
+    template = gen_template(TC=11, HC=25, LC=25)
 
     # Storing init.
     gray_images, matched_imgs, dewarped_images = [], [], []
