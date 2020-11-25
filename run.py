@@ -155,7 +155,7 @@ if __name__ == '__main__':
         "--input", "./images/stereo/left", "./images/stereo/right ",
         "--output", "./test-output",
     ]
-    sys.argv = debug_input  # Uncomment for debugging
+    # sys.argv = debug_input  # Uncomment for debugging
 
     # ------------------------------ PARSING THE INPUT ------------------------------
     # Parse the official arguments
