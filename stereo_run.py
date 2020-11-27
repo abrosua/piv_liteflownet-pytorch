@@ -104,8 +104,10 @@ def manual_process(args, net, device: str = 'cpu'):
 
 def _flo_process(args):
     # Init.
+    assert os.path.isfile(args.coeff)
     coeffdict = read_coeff(args.coeff)
-    beta = [a for a in args.alpha]
+    beta = args.alpha * 2 if len(args.alpha) == 1 else args.alpha
+    theta = args.theta * 2 if len(args.theta) == 1 else args.theta
     naming = ['left', 'right']
 
     # Check calibration point
@@ -114,6 +116,7 @@ def _flo_process(args):
     else:
         calib = None
 
+    assert os.path.isdir(args.save)
     left_flos = sorted(glob(os.path.join(args.save, naming[0], "*.flo")))
     right_dir = os.path.join(args.save, naming[1])
 
@@ -132,10 +135,12 @@ def _flo_process(args):
                                 calib)
                     for i, floname in enumerate([left_flo, right_flo])
                     ]
-        stereo_flow = willert(flow_cal, args.theta, beta)
+        stereo_flow = willert(flow_cal, theta, beta)
 
-        flosave = flobase + '_2d3c.flo'
-        write_flow(stereo_flow, os.path.join(args.save, "stereo", flosave))
+        flosave = os.path.join(args.save, "stereo",flobase + '-2d3c.flo')
+        if not os.path.isdir(os.path.dirname(flosave)):
+            os.makedirs(os.path.dirname(flosave))
+        write_flow(stereo_flow,  flosave)
 
 
 def _stereo_cal(flow, A, fps: float, calibrate: Optional[List[float]] = None):
@@ -155,7 +160,10 @@ if __name__ == "__main__":
     # -------------------- Debugging mode here --------------------
     debug_input = [
         'stereo.py',
-        '--coeff', './outputs/30-5_0.json',
+        '--coeff', './test-output/PIV-LiteFlowNet-en/test-stereo/30-5.json',
+        '--save', './test-output/PIV-LiteFlowNet-en/test-stereo/flow',
+        '--theta', "30", '--alpha', "5",
+
     ]
     sys.argv = debug_input  # Uncomment for debugging
 

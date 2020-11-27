@@ -136,7 +136,7 @@ def write_flow(flow: np.ndarray, filename: str, norm: bool = False):
     assert filename[-4:] == '.flo', "file ending is not .flo (%r)" % filename[-4:]
 
     height, width, n_bands = flow.shape
-    assert n_bands == 2, "Number of bands = %r != 2" % n_bands
+    assert n_bands == 2 or n_bands == 3, "Number of bands = %r != (2 or 3)" % n_bands
 
     # Extract the u and v velocity
     if norm:  # use flow normalization
