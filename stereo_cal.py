@@ -83,9 +83,9 @@ if __name__ == '__main__':
     # -------------------- Debugging mode here --------------------
     debug_input = [
         'stero_cal.py',
-        '--root', './images/test-stereo',
+        '--root', '../work/frames/test-stereo',
         '--name', '30-5',
-        '--save', './test-output/PIV-LiteFlowNet-en/test-stereo'
+        '--save', '../work/results/PIV-LiteFlowNet-en/test-stereo'
     ]
     sys.argv = debug_input  # Uncomment for debugging
 
