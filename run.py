@@ -140,7 +140,7 @@ def main_dl(net, inputdir: str, savedir: str, is_pair: bool = False, start_id: i
         out_flow = estimate(net, images[0], images[1], tensor=False)
 
         # Writing the output files
-        out_name = flowname_modifier(imname[0], savedir, pair=is_pair)
+        out_name = flowname_modifier(imname[0], savedir, pair=False)
         write_flow(out_flow, out_name)
 
     tqdm.write(f'Finish processing all images from {inputdir} path!')
@@ -152,8 +152,9 @@ if __name__ == '__main__':
         "run.py",
         "--start", "0", "--num_images", "-1",
         "--model", "piv", "--version", "1",
-        "--input", "./images/stereo/left", "./images/stereo/right ",
+        "--input", "./images/test",
         "--output", "./test-output",
+        "--is_pair",
     ]
     # sys.argv = debug_input  # Uncomment for debugging
 
