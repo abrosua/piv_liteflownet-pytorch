@@ -23,7 +23,8 @@ flowIO.h
 UNKNOWN_FLOW_THRESH = 1e9
 
 
-def read_flow(filename: str, crop_window: Union[int, Tuple[int, int, int, int]] = 0) -> np.array:
+def read_flow(filename: str, use_stereo: bool = False,
+              crop_window: Union[int, Tuple[int, int, int, int]] = 0) -> np.array:
     """
         Read a .flo file (Middlebury format).
         Parameters
@@ -63,7 +64,7 @@ def read_flow(filename: str, crop_window: Union[int, Tuple[int, int, int, int]] 
     if not (width > 0 and width < 100000):
         raise AssertionError("Illegal height [{h}]".format(h=height))
 
-    n_bands = 2
+    n_bands = 3 if use_stereo else 2
     size = n_bands * width * height
     tmp = np.frombuffer(flo.read(n_bands * width * height * 4), np.float32, count=size)
     flow = np.resize(tmp, (int(height), int(width), int(n_bands)))
@@ -72,7 +73,7 @@ def read_flow(filename: str, crop_window: Union[int, Tuple[int, int, int, int]] 
     return array_cropper(flow, crop_window=crop_window)
 
 
-def read_flow_collection(dirname: str, start_at: int = 0, num_images: int = -1,
+def read_flow_collection(dirname: str, start_at: int = 0, num_images: int = -1, use_stereo: bool = False,
                          crop_window: Union[int, Tuple[int, int, int, int]] = 0) -> Tuple[np.array, List[str]]:
     """
     Load a collection of .flo files.
@@ -107,7 +108,7 @@ def read_flow_collection(dirname: str, start_at: int = 0, num_images: int = -1,
 
     flos, flonames = [], []
     for frame_index, filepath in files_sliced:
-        flo_frame = read_flow(filepath, crop_window=crop_window)
+        flo_frame = read_flow(filepath, use_stereo=use_stereo,crop_window=crop_window)
         flos.append(flo_frame)
         flonames.append(filepath)
 
