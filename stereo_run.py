@@ -106,9 +106,16 @@ def _flo_process(args):
     # Init.
     assert os.path.isfile(args.coeff)
     coeffdict = read_coeff(args.coeff)
-    beta = args.alpha * 2 if len(args.alpha) == 1 else args.alpha
-    theta = args.theta * 2 if len(args.theta) == 1 else args.theta
     naming = ['left', 'right']
+
+    # Convert the angular variables from degrees to radians
+    beta, theta = [], []
+    for i in range(2):
+        id = (-1) ** (i+1)  # The left camera angles should be in NEGATIVE value!
+        alpha_deg = args.alpha[0] if len(args.alpha) == 1 else args.alpha[i]
+        theta_deg = args.theta[0] if len(args.theta) == 1 else args.theta[i]
+        beta.append(id * np.deg2rad(alpha_deg))
+        theta.append(id * np.deg2rad(theta_deg))
 
     # Check calibration point
     if "calib" in coeffdict.keys():
@@ -137,10 +144,10 @@ def _flo_process(args):
                     ]
         stereo_flow = willert(flow_cal, theta, beta)
 
-        flosave = os.path.join(args.save, "stereo",flobase + '-2d3c.flo')
+        flosave = os.path.join(args.save, "stereo", f"{flobase}-S_out.flo")
         if not os.path.isdir(os.path.dirname(flosave)):
             os.makedirs(os.path.dirname(flosave))
-        write_flow(stereo_flow,  flosave)
+        write_flow(stereo_flow, flosave)
 
 
 def _stereo_cal(flow, A, fps: float, calibrate: Optional[List[float]] = None):
@@ -160,8 +167,8 @@ if __name__ == "__main__":
     # -------------------- Debugging mode here --------------------
     debug_input = [
         'stereo.py',
-        '--coeff', './test-output/PIV-LiteFlowNet-en/test-stereo/30-5.json',
-        '--save', './test-output/PIV-LiteFlowNet-en/test-stereo/flow',
+        '--coeff', '../work/results/PIV-LiteFlowNet-en/test-stereo/30-5.json',
+        '--save', '../work/results/PIV-LiteFlowNet-en/test-stereo/flow',
         '--theta', "30", '--alpha', "5",
 
     ]

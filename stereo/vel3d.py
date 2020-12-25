@@ -8,8 +8,8 @@ def willert(flow, theta, beta):
 	Args:
 		u		:
 		v		:
-		theta	: is off-axis half angle
-		beta	: is off-axis half angle in y-z plane
+		theta	: is off-axis half angle (radians)
+		beta	: is off-axis half angle in y-z plane (radians)
 	Returns:
 		U, V, W	: 2D3C velocity array
 	"""
