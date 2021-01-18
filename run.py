@@ -9,6 +9,7 @@ from typing import Tuple
 
 import torch
 from torch.utils.data import DataLoader
+import torchvision.transforms.functional as TF
 from PIL import Image
 from tqdm import tqdm
 
@@ -26,6 +27,10 @@ parser.add_argument("--start", "-s", type=int, default=0, help="Input image star
 parser.add_argument("--num_images", "-n", type=int, default=-1,
                     help="Number of image(s) to process from the directory.")
 parser.add_argument("--is_pair", "-p", action="store_true", help="To check if the input image format is in pair.")
+parser.add_argument("--brightness", "-b", default=None, type=float, nargs="+",
+                    help="Add brightness factor to modify all the input images (optional).")
+parser.add_argument("--contrast", "-c", default=None, type=float, nargs="+",
+                    help="Add contrast factor to modify all the input images (optional).")
 
 parser.add_argument("--model", "-m", type=str, choices=["hui", "piv"],
                     help="Select which model to solve the problem!")
@@ -78,7 +83,19 @@ def get_weights(modelpath):
     return weights, netname
 
 
-def main(net, inputdir: str, savedir: str, start_id: int = 0, num_images: int = -1, device: str = "cpu"):
+def image_mod(imgpath: str, brightness_factor: float = 1.0, contrast_factor: float = 1.0):
+    # Importing the image
+    assert os.path.isfile(imgpath)
+    img = Image.open(imgpath).convert('RGB')
+
+    img_mod = TF.adjust_brightness(img, brightness_factor=brightness_factor)
+    img_mod = TF.adjust_contrast(img_mod, contrast_factor=contrast_factor)
+
+    return img_mod
+
+
+def main(net, inputdir: str, savedir: str, start_id: int = 0, num_images: int = -1, device: str = "cpu",
+         mod_factors = ((1, 1))):
     """
     Main function for motion estimator inference.
     :param net: The model object.
@@ -99,14 +116,19 @@ def main(net, inputdir: str, savedir: str, start_id: int = 0, num_images: int = 
 
     for curr_frame in tqdm(imnames, ncols=100, leave=True, unit='pair', desc=f'Evaluating {inputdir}'):
         if prev_frame is not None:
-            out_flow = Inference.parser(net,
-                                        Image.open(prev_frame).convert('RGB'),
-                                        Image.open(curr_frame).convert('RGB'),
-                                        device=device)
-            # Post-processing here
-            out_name = flowname_modifier(prev_frame, savedir, pair=False)
-            write_flow(out_flow, out_name)
-            out_names.append(out_name)
+            for brightness, contrast in mod_factors:
+                im1 = image_mod(prev_frame, brightness_factor=brightness, contrast_factor=contrast)
+                im2 = image_mod(curr_frame, brightness_factor=brightness, contrast_factor=contrast)
+                out_flow = Inference.parser(net, im1, im2, device=device)
+
+                # Post-processing here
+                modname = f"{str(int(brightness * 100)).zfill(3)}_{str(int(contrast * 100)).zfill(3)}"
+                imgname, imgext = prev_frame.rsplit("_", 1)
+                imgname_mod = imgname + "_" + modname + "_" + imgext
+
+                out_name = flowname_modifier(imgname_mod, savedir, pair=False)
+                write_flow(out_flow, out_name)
+                out_names.append(out_name)
 
         prev_frame = curr_frame
     tqdm.write(f'Finish processing all images from {inputdir} path!')
@@ -244,5 +266,13 @@ if __name__ == '__main__':
             block.log2file(log_file, '{}: {}'.format(argument, value))
 
         # Main script
-        # main(net=net, start_id=args.start, num_images=args.num_images, inputdir=imdir, savedir=flodir, device=device)
-        main_dl(net=net, is_pair=args.is_pair, start_id=args.start, num_images=args.num_images, inputdir=imdir, savedir=flodir, device=device)
+        if args.brightness is None and args.contrast is None:
+            main_dl(net=net, is_pair=args.is_pair, start_id=args.start, num_images=args.num_images, inputdir=imdir,
+                    savedir=flodir, device=device)
+        else:  # Using the image modifier (brightness or contrast adjustment)
+            brightness = (1.0,) if args.brightness is None else tuple(args.brightness)
+            contrast = (1.0,) if args.contrast is None else tuple(args.contrast)
+            mod_factors = [(b, c) for b in brightness for c in contrast]
+
+            main(net=net, start_id=args.start, num_images=args.num_images, inputdir=imdir, savedir=flodir,
+                 mod_factors=tuple(mod_factors), device=device)
