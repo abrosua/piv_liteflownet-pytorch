@@ -4,7 +4,7 @@ Cython==0.29.13
 h5py==2.10.0
 imutils==0.5.3
 lmdb==0.98
-pyarrow==0.14.1
+pyarrow==0.15.1
 setproctitle==1.1.10
 sklearn==0.0
 torch==1.4.0
