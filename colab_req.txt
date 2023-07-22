@@ -7,6 +7,6 @@ lmdb==0.98
 pyarrow==0.14.1
 setproctitle==1.1.10
 sklearn==0.0
-torch==1.4.0
+torch==1.13.1
 torchvision==0.5.0
 tqdm==4.38.0
